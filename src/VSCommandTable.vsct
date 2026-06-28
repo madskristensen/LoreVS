@@ -1,0 +1,119 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<CommandTable xmlns="http://schemas.microsoft.com/VisualStudio/2005-10-18/CommandTable" xmlns:xs="http://www.w3.org/2001/XMLSchema">
+
+  <Extern href="stdidcmd.h"/>
+  <Extern href="vsshlids.h"/>
+  <Include href="KnownImageIds.vsct"/>
+  <Include href="VSGlobals.vsct"/>
+
+  <Commands package="LoreVS">
+    <Menus>
+      <!-- The "Lore" flyout submenu, hosted on the solution node and Open Folder root
+           context menus (mirrors how the built-in Git support nests its commands). -->
+      <Menu guid="LoreVS" id="LoreSubMenu" priority="0x0600" type="Menu">
+        <Parent guid="LoreVS" id="LoreContextGroup"/>
+        <Strings>
+          <ButtonText>Lore</ButtonText>
+        </Strings>
+      </Menu>
+    </Menus>
+
+    <Groups>
+      <!-- Anchor group placed on each host context menu; carries the Lore submenu. -->
+      <Group guid="LoreVS" id="LoreContextGroup" priority="0x0600">
+        <Parent guid="guidSHLMainMenu" id="IDM_VS_CTXT_SOLNNODE"/>
+      </Group>
+      <!-- Group inside the Lore submenu that holds every command. -->
+      <Group guid="LoreVS" id="MyMenuGroup" priority="0x0600">
+        <Parent guid="LoreVS" id="LoreSubMenu"/>
+      </Group>
+    </Groups>
+
+    <!--This section defines the elements the user can interact with, like a menu command or a button
+        or combo box in a toolbar. -->
+    <Buttons>
+      <Button guid="LoreVS" id="AddToLoreCommand" priority="0x0100" type="Button">
+        <Parent guid="LoreVS" id="MyMenuGroup" />
+        <Icon guid="ImageCatalogGuid" id="Add" />
+        <CommandFlag>IconIsMoniker</CommandFlag>
+        <Strings>
+          <ButtonText>Add to Lore Source Control</ButtonText>
+          <LocCanonicalName>.LoreVS.AddToLoreSourceControl</LocCanonicalName>
+        </Strings>
+      </Button>
+      <Button guid="LoreVS" id="CommitToLoreCommand" priority="0x0110" type="Button">
+        <Parent guid="LoreVS" id="MyMenuGroup" />
+        <Icon guid="ImageCatalogGuid" id="SaveAll" />
+        <CommandFlag>IconIsMoniker</CommandFlag>
+        <Strings>
+          <ButtonText>Commit to Lore...</ButtonText>
+          <LocCanonicalName>.LoreVS.CommitToLore</LocCanonicalName>
+        </Strings>
+      </Button>
+      <Button guid="LoreVS" id="MyCommand" priority="0x0120" type="Button">
+        <Parent guid="LoreVS" id="MyMenuGroup" />
+        <Icon guid="ImageCatalogGuid" id="StatusInformation" />
+        <CommandFlag>IconIsMoniker</CommandFlag>
+        <Strings>
+          <ButtonText>Refresh Lore Status</ButtonText>
+          <LocCanonicalName>.LoreVS.RefreshLoreStatus</LocCanonicalName>
+        </Strings>
+      </Button>
+      <Button guid="LoreVS" id="StartLoreServerCommand" priority="0x0130" type="Button">
+        <Parent guid="LoreVS" id="MyMenuGroup" />
+        <Icon guid="ImageCatalogGuid" id="Run" />
+        <CommandFlag>IconIsMoniker</CommandFlag>
+        <Strings>
+          <ButtonText>Start Local Lore Server</ButtonText>
+          <LocCanonicalName>.LoreVS.StartLoreServer</LocCanonicalName>
+        </Strings>
+      </Button>
+      <Button guid="LoreVS" id="StopLoreServerCommand" priority="0x0140" type="Button">
+        <Parent guid="LoreVS" id="MyMenuGroup" />
+        <Icon guid="ImageCatalogGuid" id="Stop" />
+        <CommandFlag>IconIsMoniker</CommandFlag>
+        <Strings>
+          <ButtonText>Stop Local Lore Server</ButtonText>
+          <LocCanonicalName>.LoreVS.StopLoreServer</LocCanonicalName>
+        </Strings>
+      </Button>
+      <Button guid="LoreVS" id="InstallLoreToolsCommand" priority="0x0150" type="Button">
+        <Parent guid="LoreVS" id="MyMenuGroup" />
+        <Icon guid="ImageCatalogGuid" id="Download" />
+        <CommandFlag>IconIsMoniker</CommandFlag>
+        <Strings>
+          <ButtonText>Install Lore Tools</ButtonText>
+          <LocCanonicalName>.LoreVS.InstallLoreTools</LocCanonicalName>
+        </Strings>
+      </Button>
+    </Buttons>
+  </Commands>
+
+  <CommandPlacements>
+    <!-- Reuse the same anchor group (and therefore the Lore submenu) on the Open Folder
+         root via the Workspace Explorer context menu (a different command set than the
+         in-project folder node). -->
+    <CommandPlacement guid="LoreVS" id="LoreContextGroup" priority="0x0600">
+      <Parent guid="guidWorkspaceExplorerToolWindowPackageCmdSet" id="idmWSE_ContextMenu"/>
+    </CommandPlacement>
+  </CommandPlacements>
+
+  <Symbols>
+    <GuidSymbol name="LoreVS" value="{75c63f82-bb45-456a-be72-19ad0c8e33b4}">
+      <IDSymbol name="MyMenuGroup" value="0x0001" />
+      <IDSymbol name="LoreContextGroup" value="0x0002" />
+      <IDSymbol name="LoreSubMenu" value="0x0003" />
+      <IDSymbol name="AddToLoreCommand" value="0x0101" />
+      <IDSymbol name="CommitToLoreCommand" value="0x0102" />
+      <IDSymbol name="StartLoreServerCommand" value="0x0103" />
+      <IDSymbol name="StopLoreServerCommand" value="0x0104" />
+      <IDSymbol name="InstallLoreToolsCommand" value="0x0105" />
+      <IDSymbol name="MyCommand" value="0x0106" />
+    </GuidSymbol>
+
+    <!-- Workspace Explorer (Open Folder) context menu. -->
+    <GuidSymbol name="guidWorkspaceExplorerToolWindowPackageCmdSet" value="{cfb400f1-5c60-4f3c-856e-180d28def0b7}">
+      <IDSymbol name="idmWSE_ContextMenu" value="0x0002"/>
+    </GuidSymbol>
+  </Symbols>
+</CommandTable>

@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json.schemastore.org/vsix-publish",
+  "categories": [ "coding" ],
+  "private": false,
+  "identity": {
+    "internalName": "LoreVS",
+    "tags": [ "lore", "source control", "scc", "version control" ]
+  },
+  "overview": "README.md",
+  "publisher": "MadsKristensen",
+  "repo": "https://github.com/madskristensen/LoreVS"
+}
