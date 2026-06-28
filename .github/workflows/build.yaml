@@ -21,6 +21,7 @@ jobs:
       Configuration: Release
       DeployExtension: False
       Solution: LoreVS.slnx
+      TestProject: test\LoreVS.Tests\LoreVS.Tests.csproj
       VsixManifestPath: src\source.extension.vsixmanifest
       VsixManifestSourcePath: src\source.extension.cs
 
@@ -50,6 +51,17 @@ jobs:
 
     - name: Build
       run: msbuild ${{ env.Solution }} /v:m /m /p:Configuration=${{ env.Configuration }} /p:DeployExtension=${{ env.DeployExtension }}
+
+    - name: Run tests
+      run: dotnet test ${{ env.TestProject }} --configuration ${{ env.Configuration }} --no-build --no-restore --verbosity normal --logger:"trx;LogFileName=test-results.trx"
+
+    - name: Report test results
+      uses: dorny/test-reporter@v3
+      if: ${{ always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+      with:
+        name: Test Results
+        path: '**/test-results.trx'
+        reporter: dotnet-trx
 
     - name: Upload artifact
       uses: actions/upload-artifact@v7

@@ -17,6 +17,13 @@
     <ProjectCapability Include="CreateVsixContainer" />
   </ItemGroup>
 
+  <!-- Expose internal types (status parser, endpoint, tool locator, ignore file) to the test project. -->
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>LoreVS.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
   <!-- Auto-generated files (use Update because SDK auto-includes *.cs) -->
   <ItemGroup>
     <Compile Update="source.extension.cs">
@@ -55,6 +62,7 @@
 
   <!-- Resources included in VSIX -->
   <ItemGroup>
+    <Content Include="..\LICENSE.txt" Link="Resources\LICENSE.txt" />
     <Content Include="Resources\Icon.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>

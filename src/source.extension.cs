@@ -10,7 +10,7 @@ namespace LoreVS
     {
         public const string Id = "LoreVS.4beb5277-15de-4fff-bcaa-82af106d7233";
         public const string Name = "Lore";
-        public const string Description = @"Empty VSIX Project.";
+        public const string Description = @"Lore source control inside Visual Studio. Onboard a solution or folder, see file status glyphs, commit, and manage a local Lore server without leaving the IDE.";
         public const string Language = "en-US";
         public const string Version = "1.0.902";
         public const string Author = "Mads Kristensen";

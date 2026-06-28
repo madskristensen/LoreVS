@@ -180,112 +180,12 @@ namespace LoreVS.SourceControl
                     return EmptyStatus();
                 }
 
-                return ParseStatus(result.Output, repositoryRoot);
+                return LoreStatusParser.Parse(result.Output, repositoryRoot);
             }
             catch (Exception ex)
             {
                 Debug.WriteLine($"[LoreVS] 'lore status' failed: {ex.Message}");
                 return EmptyStatus();
-            }
-        }
-
-        /// <summary>
-        /// Parses <c>lore status --scan</c> output. The report is human-readable: a few
-        /// header lines (<c>Repository ...</c>, <c>On branch ...</c>, <c>Remote ...</c>,
-        /// <c>Local branch ...</c>), optional section headers ending in <c>:</c>, and one
-        /// line per changed file shaped as <c>&lt;CODE&gt; &lt;relative-path&gt;</c> — e.g.
-        /// <c>A hello.txt</c> or <c>M src/foo.cpp</c>. Renames appear as
-        /// <c>R old -&gt; new</c>. The format is still stabilizing pre-1.0, so anything that
-        /// does not look like a status line is skipped and unknown codes degrade to
-        /// <see cref="LoreFileStatus.Modified"/>.
-        /// </summary>
-        private static IReadOnlyDictionary<string, LoreFileStatus> ParseStatus(string output, string repositoryRoot)
-        {
-            var result = new Dictionary<string, LoreFileStatus>(StringComparer.OrdinalIgnoreCase);
-            if (string.IsNullOrWhiteSpace(output))
-            {
-                return result;
-            }
-
-            string[] lines = output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-            foreach (string line in lines)
-            {
-                string trimmed = line.Trim();
-
-                // Skip blank lines and section headers (e.g. "Changes staged for commit:").
-                if (trimmed.Length == 0 || trimmed.EndsWith(":", StringComparison.Ordinal))
-                {
-                    continue;
-                }
-
-                int space = trimmed.IndexOf(' ');
-                if (space <= 0)
-                {
-                    continue;
-                }
-
-                string code = trimmed.Substring(0, space);
-                string rest = trimmed.Substring(space + 1).Trim();
-
-                // A status code is 1-2 letters; anything longer is a prose/header line.
-                if (code.Length > 2 || !IsAlpha(code))
-                {
-                    continue;
-                }
-
-                // Renames/moves are reported as "old -> new"; track the destination path.
-                int arrow = rest.IndexOf("->", StringComparison.Ordinal);
-                if (arrow >= 0)
-                {
-                    rest = rest.Substring(arrow + 2).Trim();
-                }
-
-                string relative = rest.Trim().Trim('"');
-                if (relative.Length == 0)
-                {
-                    continue;
-                }
-
-                LoreFileStatus status = MapCode(code);
-                string absolute = NormalizePath(Path.Combine(repositoryRoot, relative));
-                result[absolute] = status;
-            }
-
-            return result;
-        }
-
-        private static bool IsAlpha(string value)
-        {
-            foreach (char c in value)
-            {
-                if (!char.IsLetter(c))
-                {
-                    return false;
-                }
-            }
-
-            return value.Length > 0;
-        }
-
-        private static LoreFileStatus MapCode(string code)
-        {
-            switch (code.ToUpperInvariant())
-            {
-                case "A":
-                    return LoreFileStatus.Added;
-                case "D":
-                    return LoreFileStatus.Deleted;
-                case "C":
-                case "U":
-                    return LoreFileStatus.Conflicted;
-                case "L":
-                    return LoreFileStatus.Locked;
-                case "I":
-                    return LoreFileStatus.Ignored;
-                case "R": // rename/move
-                case "M":
-                default:
-                    return LoreFileStatus.Modified;
             }
         }
 

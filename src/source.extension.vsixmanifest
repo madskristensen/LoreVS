@@ -4,6 +4,7 @@
     <Identity Id="LoreVS.4beb5277-15de-4fff-bcaa-82af106d7233" Version="1.0.902" Language="en-US" Publisher="Mads Kristensen" />
     <DisplayName>Lore</DisplayName>
     <Description>Lore source control inside Visual Studio. Onboard a solution or folder, see file status glyphs, commit, and manage a local Lore server without leaving the IDE.</Description>
+    <License>Resources\LICENSE.txt</License>
     <Icon>Resources\Icon.png</Icon>
     <PreviewImage>Resources\Icon.png</PreviewImage>
   </Metadata>

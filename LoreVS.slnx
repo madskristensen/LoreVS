@@ -9,4 +9,5 @@
     <Platform Solution="*|x86" Project="x86" />
     <Deploy Solution="Debug|Any CPU" />
   </Project>
+  <Project Path="test/LoreVS.Tests/LoreVS.Tests.csproj" />
 </Solution>
