@@ -74,6 +74,28 @@
     <EmbeddedResource Update="VSPackage.resx" />
   </ItemGroup>
 
+  <!-- Publish the out-of-process .NET 9 Lore worker (framework-dependent win-x64; the .NET runtime is
+       supplied by the host - VS 2026 ships .NET 10 and the worker rolls forward to it) and stage it under
+       the VSIX 'Worker' subfolder. LoreBrokeredClient launches it from <extension-dir>\Worker\LoreVS.Worker.exe.
+       The worker links a few shared source files from this project rather than referencing the assembly,
+       so there is no project cycle. -->
+  <PropertyGroup>
+    <LoreWorkerProject>$(MSBuildProjectDirectory)\..\worker\LoreVS.Worker\LoreVS.Worker.csproj</LoreWorkerProject>
+    <LoreWorkerPublishDir>$(MSBuildProjectDirectory)\..\worker\LoreVS.Worker\bin\$(Configuration)\net9.0\win-x64\publish\</LoreWorkerPublishDir>
+    <GetVsixSourceItemsDependsOn Condition="'$(SkipLoreWorkerPublish)' != 'true'">$(GetVsixSourceItemsDependsOn);PublishLoreWorker</GetVsixSourceItemsDependsOn>
+  </PropertyGroup>
+
+  <Target Name="PublishLoreWorker" Condition="'$(SkipLoreWorkerPublish)' != 'true'">
+    <Message Importance="high" Text="Publishing LoreVS.Worker (framework-dependent win-x64) for VSIX packaging..." />
+    <Exec Command="dotnet publish &quot;$(LoreWorkerProject)&quot; -c $(Configuration) -r win-x64 --self-contained false -p:SkipLoreWorkerPublish=true" />
+    <ItemGroup>
+      <_LoreWorkerPublishFiles Include="$(LoreWorkerPublishDir)**\*.*" />
+      <VSIXSourceItem Include="@(_LoreWorkerPublishFiles)">
+        <VSIXSubPath>Worker\%(RecursiveDir)</VSIXSubPath>
+      </VSIXSourceItem>
+    </ItemGroup>
+  </Target>
+
   <!-- .NET Framework assemblies not covered by the SDK or NuGet packages.
        WPF assemblies (PresentationCore/PresentationFramework/WindowsBase/System.Xaml)
        are provided implicitly by UseWPF=true. -->
@@ -86,6 +108,12 @@
     <PackageReference Include="Community.VisualStudio.VSCT" Version="16.0.29.14" PrivateAssets="all" />
     <PackageReference Include="Community.VisualStudio.Toolkit.17" Version="17.0.551" ExcludeAssets="Runtime">
       <IncludeAssets>compile; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <!-- JSON-RPC transport to the out-of-process Lore worker. Visual Studio provides StreamJsonRpc
+         (and its dependencies) at runtime, so exclude runtime assets to avoid shipping a copy that
+         could conflict with the one already loaded in the IDE process. -->
+    <PackageReference Include="StreamJsonRpc" Version="2.20.20" ExcludeAssets="Runtime">
+      <IncludeAssets>compile; build; buildtransitive</IncludeAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.VSSDK.BuildTools" Version="18.5.40034">
       <PrivateAssets>all</PrivateAssets>

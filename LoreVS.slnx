@@ -10,4 +10,5 @@
     <Deploy Solution="Debug|Any CPU" />
   </Project>
   <Project Path="test/LoreVS.Tests/LoreVS.Tests.csproj" />
+  <Project Path="worker/LoreVS.Worker/LoreVS.Worker.csproj" />
 </Solution>

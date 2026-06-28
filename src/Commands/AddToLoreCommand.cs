@@ -1,7 +1,6 @@
 using System.IO;
 using System.Threading.Tasks;
 using LoreVS.Options;
-using LoreVS.Server;
 using LoreVS.SourceControl;
 using Microsoft.VisualStudio.Shell.Interop;
 
@@ -32,7 +31,7 @@ namespace LoreVS.Commands
                 return;
             }
 
-            ILoreClient client = package.ApplyClientOptions();
+            ILoreClient client = package.Client;
 
             string existingRoot = client.FindRepositoryRoot(solutionDir);
             if (existingRoot != null)
@@ -44,8 +43,8 @@ namespace LoreVS.Commands
             if (!client.IsAvailable)
             {
                 await VS.MessageBox.ShowErrorAsync("Lore",
-                    "The Lore CLI could not be found. Install it (see https://github.com/EpicGames/lore) " +
-                    "and ensure 'lore' is on PATH, or set its path in Tools > Options > Lore.");
+                    "The Lore worker could not be started, so the SDK is unavailable. Reinstall the " +
+                    "extension so the worker payload is deployed, then try again.");
                 return;
             }
 
@@ -55,11 +54,6 @@ namespace LoreVS.Commands
             // The target is the solution/folder the user invoked the command on, so there is
             // nothing to ask: create the repository at the default URL on the configured server.
             string url = LoreVSPackage.GetServerEndpoint(options).RepositoryUrl(repoName);
-
-            if (!await LoreServerGate.EnsureAsync(package))
-            {
-                return;
-            }
 
             // Seed a .loreignore so Visual Studio's locked .vs folder, build output, and user
             // files are not staged/committed (otherwise the commit fails writing locked files).

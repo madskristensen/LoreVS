@@ -38,7 +38,7 @@ namespace LoreVS.SourceControl
         /// <summary>Whether Lore is currently the active source control provider.</summary>
         public bool Active => _active;
 
-        /// <summary>The underlying Lore client (CLI today, brokered service later).</summary>
+        /// <summary>The underlying Lore client (the out-of-process worker / SDK).</summary>
         internal ILoreClient Client => _client;
 
         /// <summary>
@@ -222,7 +222,7 @@ namespace LoreVS.SourceControl
         public void RefreshAllGlyphs()
         {
             ThreadHelper.ThrowIfNotOnUIThread();
-            (_client as LoreCliClient)?.InvalidateCache();
+            (_client as LoreBrokeredClient)?.InvalidateCache();
 
             foreach (IVsSccProject2 project in _registeredProjects)
             {

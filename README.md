@@ -37,44 +37,15 @@ Choose **Lore > Commit to Lore...**, enter a message, and Lore records the
 change. Enable **Push after commit** in the options to automatically push every
 successful commit to the remote.
 
-## Manage a local Lore server
-
-Lore operations talk to a `loreserver` instance. The extension can manage a
-local server for you:
-
-- A local server is started automatically before operations that need it.
-- A single server is shared across multiple Visual Studio instances, so it is
-  reused if one is already running.
-- Start or stop it manually with **Lore > Start Local Lore Server** and
-  **Lore > Stop Local Lore Server**.
-
-By default the server keeps running after Visual Studio closes so other
-instances can keep using it. Enable **Stop server on exit** to shut down the
-server you started when the last instance closes.
-
-## Install the Lore tools
-
-The extension needs the `lore` and `loreserver` executables. If they are
-missing, Lore offers to install them on startup by running the official
-install script, which places the binaries in `%USERPROFILE%\bin`. You can also
-install on demand with **Lore > Install Lore Tools**.
-
 ## Settings
 
 Configure everything under **Tools > Options > Lore**:
 
 | Setting | Description |
 | ------- | ----------- |
-| Identity | Commit identity (e.g. `you@example.com`) passed to `lore`. |
-| Lore CLI path | Path to the `lore` executable, or `lore` to resolve from PATH. |
-| Prompt to install tools | Offer to install the tools on startup when missing. |
+| Identity | Commit identity (e.g. `you@example.com`). |
 | Push after commit | Automatically push every successful commit. |
-| Manage a local server | Start a local `loreserver` automatically when needed. |
-| Stop server on exit | Stop the local server when Visual Studio closes. |
-| Lore server path | Path to the `loreserver` executable, or `loreserver` to resolve from PATH. |
 | Server port (gRPC/QUIC) | gRPC/QUIC port used to build repository URLs. Default `41337`. |
-| Server HTTP port | HTTP port polled for the health check. Default `41339`. |
-| Persistent store path | Directory for a persistent server store so repositories survive restarts. |
 
 ## Get involved
 

@@ -25,9 +25,6 @@ namespace LoreVS
         public const int MyMenuGroup = 0x0001;
         public const int AddToLoreCommand = 0x0101;
         public const int CommitToLoreCommand = 0x0102;
-        public const int StartLoreServerCommand = 0x0103;
-        public const int StopLoreServerCommand = 0x0104;
-        public const int InstallLoreToolsCommand = 0x0105;
         public const int MyCommand = 0x0106;
     }
 }

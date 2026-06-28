@@ -53,7 +53,6 @@ namespace LoreVS
         private const string PropRepositoryRoot = "LoreRepositoryRoot";
 
         private LoreSccService _sccService;
-        private LoreServerManager _serverManager;
 
         // Solution-persistence state. _controlledRoot is the Lore repository root bound to the
         // currently open solution (null when not controlled); _solutionHasDirtyProps tracks whether
@@ -66,44 +65,12 @@ namespace LoreVS
         /// <summary>The active Lore SCC provider service, available once the package has loaded.</summary>
         internal LoreSccService SccService => _sccService;
 
-        /// <summary>Manages the lifetime of a local Lore server on behalf of the user.</summary>
-        internal LoreServerManager ServerManager => _serverManager;
+        /// <summary>The Lore client (the out-of-process worker / SDK) backing the SCC provider.</summary>
+        internal ILoreClient Client => _sccService.Client;
 
-        /// <summary>
-        /// Applies the current options to the Lore client (CLI path) and returns it. Called
-        /// by commands before invoking Lore so user settings take effect immediately.
-        /// </summary>
-        internal ILoreClient ApplyClientOptions()
-        {
-            ILoreClient client = _sccService.Client;
-            client.ExecutablePath = LoreToolLocator.Resolve(General.Instance.LoreExecutablePath);
-            return client;
-        }
-
-        /// <summary>
-        /// Ensures a local Lore server is reachable before an operation that needs it. Reads the
-        /// current options (on the UI thread) and delegates to the <see cref="LoreServerManager"/>.
-        /// Returns <see cref="EnsureServerResult.NotManaged"/> when management is disabled or the
-        /// configured server is remote, in which case callers should simply proceed.
-        /// </summary>
-        internal async Task<EnsureServerResult> EnsureServerRunningAsync(CancellationToken cancellationToken = default)
-        {
-            General options = await General.GetLiveInstanceAsync();
-            if (!options.ManageLocalServer)
-            {
-                return EnsureServerResult.NotManaged;
-            }
-
-            return await _serverManager.EnsureRunningAsync(
-                GetServerEndpoint(options),
-                options.LoreServerExecutablePath,
-                options.LocalServerStorePath,
-                cancellationToken);
-        }
-
-        /// <summary>Builds the Lore server endpoint (host/ports) from the current options.</summary>
+        /// <summary>Builds the Lore server endpoint (host/port) from the current options.</summary>
         internal static LoreServerEndpoint GetServerEndpoint(General options) =>
-            new LoreServerEndpoint(LoreServerEndpoint.DefaultHost, options.ServerPort, options.ServerHttpPort);
+            new LoreServerEndpoint(LoreServerEndpoint.DefaultHost, options.ServerPort);
 
         /// <summary>
         /// Makes Lore the active source control provider, binds the solution's loaded projects, and
@@ -163,10 +130,9 @@ namespace LoreVS
         {
             await JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
 
-            _serverManager = new LoreServerManager();
-
-            // Create and proffer the SCC provider service.
-            _sccService = new LoreSccService(this, new LoreCliClient());
+            // Create and proffer the SCC provider service. The brokered client runs the native
+            // Lore .NET SDK in an out-of-process .NET worker over JSON-RPC.
+            _sccService = new LoreSccService(this, new LoreBrokeredClient());
             ((IServiceContainer)this).AddService(typeof(LoreSccService), _sccService, promote: true);
 
             // Do NOT call IVsRegisterScciProvider.RegisterSourceControlProvider here. The provider
@@ -199,66 +165,6 @@ namespace LoreVS
                 await JoinableTaskFactory.SwitchToMainThreadAsync();
                 ApplyControlledBinding();
             }).FileAndForget("LoreVS/RestoreScc");
-
-            // Fire-and-forget: once the IDE has settled, offer to install the Lore tools if they
-            // are missing so the user doesn't have to do it manually after installing the extension.
-            JoinableTaskFactory.RunAsync(() => PromptToInstallToolsIfMissingAsync()).FileAndForget("LoreVS/PromptToInstallTools");
-        }
-
-        /// <summary>
-        /// Detects whether the <c>lore</c>/<c>loreserver</c> tools are installed and, when they are
-        /// not, offers to install them. Declining (or disabling the option) suppresses the offer on
-        /// future launches; the user can still install on demand via the "Install Lore Tools" command.
-        /// </summary>
-        private async Task PromptToInstallToolsIfMissingAsync()
-        {
-            General options = await General.GetLiveInstanceAsync();
-            if (!options.PromptToInstallTools)
-            {
-                return;
-            }
-
-            bool hasCli = LoreToolLocator.Exists(options.LoreExecutablePath);
-            bool hasServer = LoreToolLocator.Exists(options.LoreServerExecutablePath);
-            if (hasCli && hasServer)
-            {
-                return;
-            }
-
-            await JoinableTaskFactory.SwitchToMainThreadAsync();
-
-            bool confirmed = await VS.MessageBox.ShowConfirmAsync("Lore",
-                "The Lore command-line tools (lore/loreserver) were not found. Would you like to " +
-                "install them now? This downloads and runs the official Lore install script from " +
-                "GitHub, placing the tools in %USERPROFILE%\\bin.\r\n\r\n" +
-                "Choose No to skip; you can install later via the 'Install Lore Tools' command.");
-            if (!confirmed)
-            {
-                // Don't nag on every launch. The user can re-enable in Tools > Options > Lore, or
-                // install on demand via the command.
-                options.PromptToInstallTools = false;
-                await options.SaveAsync();
-                return;
-            }
-
-            await LoreLog.WriteLineAsync("Installing Lore tools...");
-            await VS.StatusBar.ShowMessageAsync("Installing Lore tools...");
-
-            bool ok = await LoreToolInstaller.InstallAsync(installCli: !hasCli, installServer: !hasServer);
-
-            if (ok)
-            {
-                await VS.StatusBar.ShowMessageAsync("Lore tools installed.");
-                await VS.MessageBox.ShowAsync("Lore",
-                    "Lore tools were installed into %USERPROFILE%\\bin. You can now add a solution to " +
-                    "Lore source control.");
-            }
-            else
-            {
-                await VS.StatusBar.ShowMessageAsync("Lore tools installation failed.");
-                await VS.MessageBox.ShowErrorAsync("Lore",
-                    "Installation failed. See the 'Lore' Output pane for details.");
-            }
         }
 
         /// <summary>
@@ -344,7 +250,7 @@ namespace LoreVS
                 return;
             }
 
-            string detected = ApplyClientOptions().FindRepositoryRoot(solutionDir);
+            string detected = Client.FindRepositoryRoot(solutionDir);
             if (detected != null)
             {
                 _controlledRoot = detected;
@@ -376,15 +282,8 @@ namespace LoreVS
                 Microsoft.VisualStudio.Shell.Events.SolutionEvents.OnAfterCloseSolution -= OnAfterCloseSolution;
                 VS.Events.DocumentEvents.Saved -= OnDocumentSaved;
 
-                // Only stop the server we started, and only if the user opted in — other Visual
-                // Studio instances may be sharing it.
-                if (_serverManager != null)
-                {
-                    if (General.Instance.StopServerOnExit)
-                    {
-                        _serverManager.Dispose();
-                    }
-                }
+                // Tear down the brokered client so its out-of-process Lore worker is stopped.
+                (_sccService?.Client as IDisposable)?.Dispose();
             }
 
             base.Dispose(disposing);

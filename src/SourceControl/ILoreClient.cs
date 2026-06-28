@@ -4,27 +4,18 @@ namespace LoreVS.SourceControl
 {
     /// <summary>
     /// Abstraction over the Lore version control system used by the in-process
-    /// VSPackage. The read-only MVP only needs repository discovery and file
-    /// status; write operations (commit/lock/sync) are layered on later.
+    /// VSPackage. Provides repository discovery, file status, and the write
+    /// operations (create/stage/commit/push/sync) needed by the SCC provider.
     /// </summary>
     /// <remarks>
-    /// This interface is the seam described in the implementation plan: the MVP
-    /// ships <see cref="LoreCliClient"/> (shells out to the <c>lore</c> CLI), and a
-    /// future <c>LoreBrokeredClient</c> (consuming a ServiceHub-hosted .NET brokered
-    /// service that wraps the <c>LoreVcs</c> SDK) can be dropped in unchanged.
+    /// The extension ships <see cref="LoreBrokeredClient"/>, which runs the native
+    /// <c>LoreVcs</c> .NET SDK in an out-of-process worker and talks to it over JSON-RPC.
     /// </remarks>
     public interface ILoreClient
     {
         /// <summary>
-        /// Path to the <c>lore</c> executable. Defaults to <c>"lore"</c> (resolved from
-        /// PATH); set to an absolute path when the CLI is not on PATH. Ignored by a future
-        /// brokered (SDK) implementation.
-        /// </summary>
-        string ExecutablePath { get; set; }
-
-        /// <summary>
-        /// True when the Lore backend can be reached (the CLI is resolvable / the brokered
-        /// service is available). Used to decide whether write commands are offered.
+        /// True when the Lore backend can be reached (the worker launched and the native
+        /// SDK loaded). Used to decide whether write commands are offered.
         /// </summary>
         bool IsAvailable { get; }
 

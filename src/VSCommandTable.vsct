@@ -59,34 +59,7 @@
           <LocCanonicalName>.LoreVS.RefreshLoreStatus</LocCanonicalName>
         </Strings>
       </Button>
-      <Button guid="LoreVS" id="StartLoreServerCommand" priority="0x0130" type="Button">
-        <Parent guid="LoreVS" id="MyMenuGroup" />
-        <Icon guid="ImageCatalogGuid" id="Run" />
-        <CommandFlag>IconIsMoniker</CommandFlag>
-        <Strings>
-          <ButtonText>Start Local Lore Server</ButtonText>
-          <LocCanonicalName>.LoreVS.StartLoreServer</LocCanonicalName>
-        </Strings>
-      </Button>
-      <Button guid="LoreVS" id="StopLoreServerCommand" priority="0x0140" type="Button">
-        <Parent guid="LoreVS" id="MyMenuGroup" />
-        <Icon guid="ImageCatalogGuid" id="Stop" />
-        <CommandFlag>IconIsMoniker</CommandFlag>
-        <Strings>
-          <ButtonText>Stop Local Lore Server</ButtonText>
-          <LocCanonicalName>.LoreVS.StopLoreServer</LocCanonicalName>
-        </Strings>
-      </Button>
-      <Button guid="LoreVS" id="InstallLoreToolsCommand" priority="0x0150" type="Button">
-        <Parent guid="LoreVS" id="MyMenuGroup" />
-        <Icon guid="ImageCatalogGuid" id="Download" />
-        <CommandFlag>IconIsMoniker</CommandFlag>
-        <Strings>
-          <ButtonText>Install Lore Tools</ButtonText>
-          <LocCanonicalName>.LoreVS.InstallLoreTools</LocCanonicalName>
-        </Strings>
-      </Button>
-    </Buttons>
+      </Buttons>
   </Commands>
 
   <CommandPlacements>
@@ -105,9 +78,6 @@
       <IDSymbol name="LoreSubMenu" value="0x0003" />
       <IDSymbol name="AddToLoreCommand" value="0x0101" />
       <IDSymbol name="CommitToLoreCommand" value="0x0102" />
-      <IDSymbol name="StartLoreServerCommand" value="0x0103" />
-      <IDSymbol name="StopLoreServerCommand" value="0x0104" />
-      <IDSymbol name="InstallLoreToolsCommand" value="0x0105" />
       <IDSymbol name="MyCommand" value="0x0106" />
     </GuidSymbol>
 

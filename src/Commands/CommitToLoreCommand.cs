@@ -31,7 +31,7 @@ namespace LoreVS.Commands
                 return;
             }
 
-            ILoreClient client = package.ApplyClientOptions();
+            ILoreClient client = package.Client;
             string root = client.FindRepositoryRoot(solutionDir);
             if (root == null)
             {
@@ -43,7 +43,8 @@ namespace LoreVS.Commands
             if (!client.IsAvailable)
             {
                 await VS.MessageBox.ShowErrorAsync("Lore",
-                    "The Lore CLI could not be found. Set its path in Tools > Options > Lore.");
+                    "The Lore worker could not be started, so the SDK is unavailable. Reinstall the " +
+                    "extension so the worker payload is deployed, then try again.");
                 return;
             }
 
@@ -82,13 +83,6 @@ namespace LoreVS.Commands
 
             if (options.AutoPushOnCommit)
             {
-                if (!await LoreServerGate.EnsureAsync(package))
-                {
-                    await VS.MessageBox.ShowWarningAsync("Lore",
-                        "Commit succeeded but the local server is unavailable, so it was not pushed.");
-                    return;
-                }
-
                 await VS.StatusBar.ShowMessageAsync("Pushing...");
                 LoreCommandResult push = await Task.Run(() => client.Push(root));
                 await LoreLog.WriteCommandAsync("push", push.CombinedText);
