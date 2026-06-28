@@ -15,6 +15,9 @@
     <!-- The integration test drives the real worker over JSON-RPC, so the test host needs the
          StreamJsonRpc runtime that the VSIX project intentionally excludes (VS supplies it there). -->
     <PackageReference Include="StreamJsonRpc" Version="2.20.20" />
+    <!-- LoreTreeNode references VS imaging types (ImageMoniker/KnownMonikers); the VSIX excludes the
+         toolkit's runtime assets because VS supplies them. The test host needs them on disk to load. -->
+    <PackageReference Include="Community.VisualStudio.Toolkit.17" Version="17.0.551" />
   </ItemGroup>
 
   <ItemGroup>

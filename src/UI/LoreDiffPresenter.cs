@@ -51,13 +51,14 @@ namespace LoreVS.UI
 
                 await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
 
-                // Use the IDE's built-in diff command, which reliably opens the comparison window in
-                // this environment where IVsDifferenceService.OpenComparisonWindow2 silently no-ops.
-                // Tools.DiffFiles takes "<left> <right> [<leftLabel>] [<rightLabel>]" as quoted args.
+                // Use the IDE's built-in Tools.DiffFiles command (via DTE) to open the comparison
+                // window, since IVsDifferenceService.OpenComparisonWindow2 silently no-ops here. The
+                // arguments are "<left> <right> [<leftLabel>] [<rightLabel>]", space-delimited and quoted.
                 string arguments = Quote(basePath) + " " + Quote(item.FullPath) + " " +
                     Quote(item.FileName + " (committed)") + " " + Quote(item.FileName + " (working)");
 
-                await VS.Commands.ExecuteAsync("Tools.DiffFiles", arguments);
+                EnvDTE.DTE dte = await VS.GetRequiredServiceAsync<EnvDTE.DTE, EnvDTE.DTE>();
+                dte.ExecuteCommand("Tools.DiffFiles", arguments);
             }
             catch (Exception ex)
             {
