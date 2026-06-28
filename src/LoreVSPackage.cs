@@ -44,6 +44,9 @@ namespace LoreVS
     // shell sees this section, loads this package, and calls IVsPersistSolutionProps.ReadSolutionProps
     // so we can re-activate Lore as the source control provider (the same way VS persists Git/TFS).
     [ProvideSolutionProps(SolutionPersistenceKey)]
+    // The Lore Changes tool window - a Git Changes-style panel for staging-free commit, diff,
+    // and push/pull. Docked next to Solution Explorer by default.
+    [ProvideToolWindow(typeof(UI.LoreChangesToolWindow.Pane), Style = VsDockStyle.Tabbed, Window = WindowGuids.SolutionExplorer)]
     [Guid(PackageGuids.LoreVSString)]
     public sealed partial class LoreVSPackage : ToolkitPackage
     {
@@ -100,16 +103,19 @@ namespace LoreVS
             if (GetService(typeof(IVsRegisterScciProvider)) is IVsRegisterScciProvider register)
             {
                 int hr = register.RegisterSourceControlProvider(LoreGuids.SccProvider);
+                DiagLog.Write($"[scc] RegisterSourceControlProvider(Lore) hr=0x{hr:X8} active={_sccService.Active}");
                 LoreLog.WriteLineAsync($"[scc] RegisterSourceControlProvider(Lore) hr=0x{hr:X8}; active={_sccService.Active}")
                     .FileAndForget("LoreVS/Onboard");
             }
             else
             {
+                DiagLog.Write("[scc] IVsRegisterScciProvider not available - cannot activate Lore");
                 LoreLog.WriteLineAsync("[scc] IVsRegisterScciProvider service was not available - cannot switch active provider to Lore.")
                     .FileAndForget("LoreVS/Onboard");
             }
 
             int bound = _sccService.OnboardSolution(solution, repositoryRoot);
+            DiagLog.Write($"[scc] OnboardSolution bound {bound} project(s); active={_sccService.Active}");
             LoreLog.WriteLineAsync($"[scc] OnboardSolution bound {bound} project(s); active={_sccService.Active}")
                 .FileAndForget("LoreVS/Onboard");
             return bound;
@@ -152,8 +158,9 @@ namespace LoreVS
             VS.Events.DocumentEvents.Saved += OnDocumentSaved;
 
             await this.RegisterCommandsAsync();
+            this.RegisterToolWindows();
 
-            // The package may have loaded after a solution was already opened (e.g. restored from
+            // The package may have loaded after a solution was already opened
             // the MRU on startup), in which case OnAfterOpenSolution/ReadSolutionProps already ran
             // before we subscribed. Restore the Lore binding for any solution that is already open.
             // This is deferred until after InitializeAsync returns: activating the SCC provider
@@ -163,6 +170,7 @@ namespace LoreVS
             {
                 await Task.Yield();
                 await JoinableTaskFactory.SwitchToMainThreadAsync();
+                DiagLog.Write("[init] deferred restore -> ApplyControlledBinding");
                 ApplyControlledBinding();
             }).FileAndForget("LoreVS/RestoreScc");
         }
@@ -202,6 +210,7 @@ namespace LoreVS
         private void OnAfterOpenSolution(object sender, Microsoft.VisualStudio.Shell.Events.OpenSolutionEventArgs e)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
+            DiagLog.Write("[evt] OnAfterOpenSolution -> ApplyControlledBinding");
             ApplyControlledBinding();
         }
 
@@ -225,6 +234,7 @@ namespace LoreVS
 
             if (_sccService == null || !(GetService(typeof(SVsSolution)) is IVsSolution solution))
             {
+                DiagLog.Write($"[bind] ApplyControlledBinding skipped: sccService={(_sccService != null)} solutionService={GetService(typeof(SVsSolution)) is IVsSolution}");
                 return;
             }
 
@@ -238,6 +248,7 @@ namespace LoreVS
 
             if (!string.IsNullOrEmpty(_controlledRoot))
             {
+                DiagLog.Write($"[bind] using persisted/controlled root '{_controlledRoot}' -> ActivateAndBind");
                 ActivateAndBind(solution, _controlledRoot);
                 return;
             }
@@ -247,10 +258,12 @@ namespace LoreVS
             string solutionDir = SolutionScc.GetSolutionDirectory(solution);
             if (string.IsNullOrEmpty(solutionDir))
             {
+                DiagLog.Write("[bind] no solution directory; nothing to bind");
                 return;
             }
 
             string detected = Client.FindRepositoryRoot(solutionDir);
+            DiagLog.Write($"[bind] solutionDir='{solutionDir}' detectedRoot='{detected ?? "<null>"}'");
             if (detected != null)
             {
                 _controlledRoot = detected;
@@ -259,6 +272,7 @@ namespace LoreVS
             }
             else
             {
+                DiagLog.Write("[bind] no .lore root detected -> RefreshAllGlyphs only (provider NOT activated)");
                 _sccService.RefreshAllGlyphs();
             }
         }

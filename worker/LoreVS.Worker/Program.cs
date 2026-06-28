@@ -23,6 +23,18 @@ namespace LoreVS.Worker
     {
         private static async Task<int> Main(string[] args)
         {
+            // A native crash or an exception on a background/threadpool thread bypasses the
+            // try/catch in ServeAsync and tears the process down silently, which the package only
+            // sees as a ConnectionLostException. Capture those out-of-band failures so the reason is
+            // recorded in the worker log instead of vanishing.
+            AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+                WorkerLog.Write("FATAL unhandled: " + ((e.ExceptionObject as Exception)?.ToString() ?? e.ExceptionObject?.ToString() ?? "unknown"));
+            TaskScheduler.UnobservedTaskException += (_, e) =>
+            {
+                WorkerLog.Write("FATAL unobserved task: " + e.Exception);
+                e.SetObserved();
+            };
+
             if (args.Length >= 2 && string.Equals(args[0], "--smoke", StringComparison.OrdinalIgnoreCase))
             {
                 return await RunSmokeAsync(args[1]).ConfigureAwait(false);
@@ -45,6 +57,7 @@ namespace LoreVS.Worker
         /// <summary>Serves a single JSON-RPC client connecting on <paramref name="pipeName"/>.</summary>
         private static async Task<int> ServeAsync(string pipeName)
         {
+            WorkerLog.Write($"worker starting; pipe '{pipeName}'; exe '{Environment.ProcessPath}'");
             try
             {
                 using var pipe = new NamedPipeServerStream(
@@ -55,18 +68,29 @@ namespace LoreVS.Worker
                     PipeOptions.Asynchronous);
 
                 await pipe.WaitForConnectionAsync().ConfigureAwait(false);
+                WorkerLog.Write("client connected; serving JSON-RPC");
 
+                // Lifecycle breadcrumbs: if the worker ever connects but then stops responding, the
+                // last line reached pinpoints whether construction, StartListening, or the read loop
+                // stalled. These are low volume (once per connection), not per-message.
                 var formatter = new SystemTextJsonFormatter();
                 var handler = new HeaderDelimitedMessageHandler(pipe, pipe, formatter);
                 using var rpc = new JsonRpc(handler);
+                rpc.Disconnected += (_, e) =>
+                    WorkerLog.Write(
+                        $"JSON-RPC disconnected: reason={e.Reason}; description='{e.Description}'" +
+                        (e.Exception != null ? "; exception=" + e.Exception : string.Empty));
                 rpc.AddLocalRpcTarget<ILoreWorkerContract>(new LoreServiceImpl(), null);
                 rpc.StartListening();
+                WorkerLog.Write("serving; awaiting JSON-RPC completion");
 
                 await rpc.Completion.ConfigureAwait(false);
+                WorkerLog.Write("JSON-RPC completed; worker exiting");
                 return 0;
             }
             catch (Exception ex)
             {
+                WorkerLog.Write("FATAL: " + ex);
                 Console.Error.WriteLine($"LoreVS.Worker: fatal error: {ex}");
                 return 1;
             }

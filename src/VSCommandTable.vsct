@@ -16,6 +16,13 @@
           <ButtonText>Lore</ButtonText>
         </Strings>
       </Menu>
+      <!-- Toolbar hosted at the top of the Lore Changes tool window. -->
+      <Menu guid="LoreVS" id="LoreChangesToolbar" type="ToolWindowToolbar">
+        <CommandFlag>DefaultDocked</CommandFlag>
+        <Strings>
+          <ButtonText>Lore Changes</ButtonText>
+        </Strings>
+      </Menu>
     </Menus>
 
     <Groups>
@@ -26,6 +33,10 @@
       <!-- Group inside the Lore submenu that holds every command. -->
       <Group guid="LoreVS" id="MyMenuGroup" priority="0x0600">
         <Parent guid="LoreVS" id="LoreSubMenu"/>
+      </Group>
+      <!-- Group on the Lore Changes tool window toolbar that holds its buttons. -->
+      <Group guid="LoreVS" id="LoreChangesToolbarGroup" priority="0x0000">
+        <Parent guid="LoreVS" id="LoreChangesToolbar"/>
       </Group>
     </Groups>
 
@@ -39,6 +50,15 @@
         <Strings>
           <ButtonText>Add to Lore Source Control</ButtonText>
           <LocCanonicalName>.LoreVS.AddToLoreSourceControl</LocCanonicalName>
+        </Strings>
+      </Button>
+      <Button guid="LoreVS" id="OpenLoreChangesCommand" priority="0x0105" type="Button">
+        <Parent guid="LoreVS" id="MyMenuGroup" />
+        <Icon guid="ImageCatalogGuid" id="Changeset" />
+        <CommandFlag>IconIsMoniker</CommandFlag>
+        <Strings>
+          <ButtonText>Lore Changes</ButtonText>
+          <LocCanonicalName>.LoreVS.LoreChanges</LocCanonicalName>
         </Strings>
       </Button>
       <Button guid="LoreVS" id="CommitToLoreCommand" priority="0x0110" type="Button">
@@ -59,6 +79,35 @@
           <LocCanonicalName>.LoreVS.RefreshLoreStatus</LocCanonicalName>
         </Strings>
       </Button>
+
+      <!-- Lore Changes tool window toolbar buttons. -->
+      <Button guid="LoreVS" id="PullCommand" priority="0x0100" type="Button">
+        <Parent guid="LoreVS" id="LoreChangesToolbarGroup" />
+        <Icon guid="ImageCatalogGuid" id="Download" />
+        <CommandFlag>IconIsMoniker</CommandFlag>
+        <Strings>
+          <ButtonText>Pull</ButtonText>
+          <LocCanonicalName>.LoreVS.Pull</LocCanonicalName>
+        </Strings>
+      </Button>
+      <Button guid="LoreVS" id="PushCommand" priority="0x0110" type="Button">
+        <Parent guid="LoreVS" id="LoreChangesToolbarGroup" />
+        <Icon guid="ImageCatalogGuid" id="Upload" />
+        <CommandFlag>IconIsMoniker</CommandFlag>
+        <Strings>
+          <ButtonText>Push</ButtonText>
+          <LocCanonicalName>.LoreVS.Push</LocCanonicalName>
+        </Strings>
+      </Button>
+      <Button guid="LoreVS" id="RefreshChangesCommand" priority="0x0120" type="Button">
+        <Parent guid="LoreVS" id="LoreChangesToolbarGroup" />
+        <Icon guid="ImageCatalogGuid" id="Refresh" />
+        <CommandFlag>IconIsMoniker</CommandFlag>
+        <Strings>
+          <ButtonText>Refresh</ButtonText>
+          <LocCanonicalName>.LoreVS.RefreshChanges</LocCanonicalName>
+        </Strings>
+      </Button>
       </Buttons>
   </Commands>
 
@@ -76,9 +125,15 @@
       <IDSymbol name="MyMenuGroup" value="0x0001" />
       <IDSymbol name="LoreContextGroup" value="0x0002" />
       <IDSymbol name="LoreSubMenu" value="0x0003" />
+      <IDSymbol name="LoreChangesToolbar" value="0x0004" />
+      <IDSymbol name="LoreChangesToolbarGroup" value="0x0005" />
       <IDSymbol name="AddToLoreCommand" value="0x0101" />
       <IDSymbol name="CommitToLoreCommand" value="0x0102" />
       <IDSymbol name="MyCommand" value="0x0106" />
+      <IDSymbol name="OpenLoreChangesCommand" value="0x0107" />
+      <IDSymbol name="PullCommand" value="0x0108" />
+      <IDSymbol name="PushCommand" value="0x0109" />
+      <IDSymbol name="RefreshChangesCommand" value="0x010A" />
     </GuidSymbol>
 
     <!-- Workspace Explorer (Open Folder) context menu. -->

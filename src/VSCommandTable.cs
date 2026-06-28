@@ -15,6 +15,9 @@ namespace LoreVS
     {
         public const string LoreVSString = "75c63f82-bb45-456a-be72-19ad0c8e33b4";
         public static Guid LoreVS = new Guid(LoreVSString);
+
+        public const string guidWorkspaceExplorerToolWindowPackageCmdSetString = "cfb400f1-5c60-4f3c-856e-180d28def0b7";
+        public static Guid guidWorkspaceExplorerToolWindowPackageCmdSet = new Guid(guidWorkspaceExplorerToolWindowPackageCmdSetString);
     }
 
     /// <summary>
@@ -23,8 +26,17 @@ namespace LoreVS
     internal sealed partial class PackageIds
     {
         public const int MyMenuGroup = 0x0001;
+        public const int LoreContextGroup = 0x0002;
+        public const int LoreSubMenu = 0x0003;
+        public const int LoreChangesToolbar = 0x0004;
+        public const int LoreChangesToolbarGroup = 0x0005;
         public const int AddToLoreCommand = 0x0101;
         public const int CommitToLoreCommand = 0x0102;
         public const int MyCommand = 0x0106;
+        public const int OpenLoreChangesCommand = 0x0107;
+        public const int PullCommand = 0x0108;
+        public const int PushCommand = 0x0109;
+        public const int RefreshChangesCommand = 0x010A;
+        public const int idmWSE_ContextMenu = 0x0002;
     }
 }

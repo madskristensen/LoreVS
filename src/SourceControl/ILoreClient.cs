@@ -39,6 +39,20 @@ namespace LoreVS.SourceControl
         IReadOnlyDictionary<string, LoreFileStatus> GetRepositoryStatus(string repositoryRoot);
 
         /// <summary>
+        /// Returns the changed files and branch/revision summary for the repository at
+        /// <paramref name="repositoryRoot"/> in a single status pass. Preferred over calling
+        /// <see cref="GetRepositoryStatus"/> and <see cref="GetRepositoryInfo"/> separately, which
+        /// the native SDK does not reliably tolerate back-to-back.
+        /// </summary>
+        LoreRepositorySnapshot GetRepositorySnapshot(string repositoryRoot);
+
+        /// <summary>
+        /// Returns branch and local/remote revision information (current branch name and how far
+        /// the branch is ahead/behind its remote) for the repository at <paramref name="repositoryRoot"/>,
+        /// or <see langword="null"/> when it cannot be determined.
+        /// </summary>
+        LoreRepositoryInfo GetRepositoryInfo(string repositoryRoot);
+        /// <summary>
         /// Onboards <paramref name="workingDirectory"/> to Lore by creating a repository on
         /// the server identified by <paramref name="repositoryUrl"/>. The existing files in
         /// the directory are preserved and a <c>.lore</c> working tree is laid down alongside.
@@ -54,10 +68,29 @@ namespace LoreVS.SourceControl
         /// <summary>Commits the staged revision with <paramref name="message"/>.</summary>
         LoreCommandResult Commit(string workingDirectory, string message, string identity);
 
+        /// <summary>
+        /// Stages every changed file and amends the latest revision, replacing its message with
+        /// <paramref name="message"/> and folding the staged changes into it.
+        /// </summary>
+        LoreCommandResult Amend(string workingDirectory, string message, string identity);
+
         /// <summary>Pushes local commits to the remote (equivalent to <c>lore push</c>).</summary>
         LoreCommandResult Push(string workingDirectory);
 
         /// <summary>Synchronizes the working tree to the latest remote revision (<c>lore sync</c>).</summary>
         LoreCommandResult Sync(string workingDirectory);
+
+        /// <summary>
+        /// Discards working-tree changes for <paramref name="paths"/>, resetting them to the
+        /// current revision (equivalent to <c>lore file reset</c>).
+        /// </summary>
+        LoreCommandResult ResetFiles(string workingDirectory, string[] paths);
+
+        /// <summary>
+        /// Writes the content of <paramref name="relativePath"/> as it exists at
+        /// <paramref name="revision"/> (empty for the current revision) to <paramref name="outputPath"/>.
+        /// Used to materialize the committed version of a file for diffing.
+        /// </summary>
+        LoreCommandResult WriteFileAtRevision(string workingDirectory, string relativePath, string revision, string outputPath);
     }
 }

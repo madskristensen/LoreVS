@@ -1,0 +1,101 @@
+<UserControl x:Class="LoreVS.UI.LoreChangesControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:toolkit="clr-namespace:Community.VisualStudio.Toolkit;assembly=Community.VisualStudio.Toolkit"
+             toolkit:Themes.UseVsTheme="True"
+             mc:Ignorable="d"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             d:DesignHeight="500" d:DesignWidth="320">
+
+    <Grid Margin="8">
+        <!-- Shown when the open solution/folder is not under Lore source control. -->
+        <TextBlock x:Name="NoRepositoryMessage"
+                   Text="This solution or folder is not under Lore source control."
+                   TextWrapping="Wrap"
+                   VerticalAlignment="Center" HorizontalAlignment="Center"
+                   TextAlignment="Center" Opacity="0.7"
+                   Visibility="Collapsed" />
+
+        <DockPanel x:Name="RepositoryPanel">
+            <!-- Branch header -->
+            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
+                <TextBlock Text="{Binding BranchText}" FontWeight="Bold" VerticalAlignment="Center" />
+                <TextBlock Text="{Binding AheadBehindText}" Margin="10,0,0,0" Opacity="0.8" VerticalAlignment="Center" />
+            </StackPanel>
+
+            <!-- Commit area -->
+            <StackPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                <TextBox x:Name="MessageBox"
+                         Text="{Binding CommitMessage, UpdateSourceTrigger=PropertyChanged}"
+                         AcceptsReturn="True" TextWrapping="Wrap"
+                         MinHeight="56" MaxHeight="140"
+                         VerticalScrollBarVisibility="Auto"
+                         IsEnabled="{Binding CanInteract}"
+                         ToolTip="Commit message" />
+
+                <CheckBox x:Name="AmendCheck"
+                          Content="Amend latest revision"
+                          Margin="0,6,0,0"
+                          IsChecked="{Binding Amend}"
+                          IsEnabled="{Binding CanInteract}" />
+
+                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                    <Button x:Name="CommitButton" Content="Commit All"
+                            MinWidth="90" Click="OnCommitClick"
+                            IsEnabled="{Binding CanInteract}" />
+                    <Button x:Name="CommitPushButton" Content="Commit All and Push"
+                            Margin="6,0,0,0" Click="OnCommitAndPushClick"
+                            IsEnabled="{Binding CanInteract}" />
+                </StackPanel>
+            </StackPanel>
+
+            <!-- Status line -->
+            <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusText}"
+                       Margin="0,8,0,0" Opacity="0.8" TextTrimming="CharacterEllipsis" />
+
+            <!-- Changes header -->
+            <TextBlock DockPanel.Dock="Top" Margin="0,0,0,4" FontWeight="Bold"
+                       Text="{Binding Changes.Count, StringFormat=Changes ({0})}" />
+
+            <!-- Changed files -->
+            <ListBox x:Name="ChangesList"
+                     ItemsSource="{Binding Changes}"
+                     SelectionMode="Extended"
+                     HorizontalContentAlignment="Stretch"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                     MouseDoubleClick="OnChangeDoubleClick">
+                <ListBox.InputBindings>
+                    <KeyBinding Key="Return" Command="{x:Static ApplicationCommands.NotACommand}" />
+                </ListBox.InputBindings>
+                <ListBox.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Header="Open Diff" Click="OnOpenDiffMenu" />
+                        <MenuItem Header="Open File" Click="OnOpenFileMenu" />
+                        <Separator />
+                        <MenuItem Header="Discard Changes..." Click="OnDiscardMenu" />
+                    </ContextMenu>
+                </ListBox.ContextMenu>
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <Grid ToolTip="{Binding RelativePath}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="18" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="{Binding StatusBadge}"
+                                       FontWeight="Bold" HorizontalAlignment="Center"
+                                       ToolTip="{Binding StatusText}" />
+                            <TextBlock Grid.Column="1" Text="{Binding FileName}"
+                                       TextTrimming="CharacterEllipsis" />
+                            <TextBlock Grid.Column="2" Text="{Binding Directory}"
+                                       Margin="8,0,0,0" Opacity="0.6"
+                                       TextTrimming="CharacterEllipsis" />
+                        </Grid>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </DockPanel>
+    </Grid>
+</UserControl>

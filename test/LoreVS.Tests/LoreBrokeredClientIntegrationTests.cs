@@ -2,6 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using LoreVS.SourceControl;
 
@@ -72,6 +75,74 @@ namespace LoreVS.Tests
         }
 
         [TestMethod]
+        public void GetRepositorySnapshot_ReturnsFilesAndBranchInOnePass()
+        {
+            string worker = RequireWorker();
+            string repoPath = Path.Combine(_tempRoot, "repo");
+            SeedRepository(worker, repoPath);
+
+            using var client = new LoreBrokeredClient(worker);
+            LoreRepositorySnapshot snapshot = client.GetRepositorySnapshot(repoPath);
+
+            Assert.IsNotNull(snapshot, "The snapshot should never be null.");
+            Assert.IsNotNull(snapshot.Files, "The snapshot file list should never be null.");
+
+            string modified = Path.GetFullPath(Path.Combine(repoPath, "file.txt"));
+            string added = Path.GetFullPath(Path.Combine(repoPath, "untracked.txt"));
+
+            var byPath = new Dictionary<string, LoreFileStatus>(StringComparer.OrdinalIgnoreCase);
+            foreach (LoreStatusEntry entry in snapshot.Files)
+            {
+                byPath[Path.GetFullPath(entry.Path)] = entry.Status;
+            }
+
+            Assert.IsTrue(byPath.ContainsKey(modified), "The committed-then-edited file should be reported.");
+            Assert.AreEqual(LoreFileStatus.Modified, byPath[modified]);
+            Assert.IsTrue(byPath.ContainsKey(added), "The untracked file should be reported.");
+            Assert.AreEqual(LoreFileStatus.Added, byPath[added]);
+        }
+
+        [TestMethod]
+        public void ConcurrentStatusCalls_DoNotCrashWorker()
+        {
+            string worker = RequireWorker();
+            string repoPath = Path.Combine(_tempRoot, "repo");
+            SeedRepository(worker, repoPath);
+
+            using var client = new LoreBrokeredClient(worker);
+
+            // Reproduce the IDE's call pattern: the glyph-warming path and the Lore Changes window
+            // fan out several status/snapshot queries against the same repository at once. The native
+            // SDK drives its own runtime per call; if those calls are allowed to run concurrently the
+            // worker can crash, which surfaces in the package as a ConnectionLostException and an
+            // empty/never-updating window. Each call must therefore complete and agree on the result.
+            const int parallelism = 16;
+            var tasks = new List<Task<int>>(parallelism);
+            for (int i = 0; i < parallelism; i++)
+            {
+                bool snapshot = (i % 2) == 0;
+                tasks.Add(Task.Run(() =>
+                    snapshot
+                        ? (client.GetRepositorySnapshot(repoPath)?.Files?.Length ?? -1)
+                        : client.GetRepositoryStatus(repoPath).Count));
+            }
+
+#pragma warning disable VSTHRD002 // Test deliberately blocks to join the parallel worker calls.
+            Task.WaitAll(tasks.ToArray());
+
+            int[] counts = tasks.Select(t => t.Result).ToArray();
+#pragma warning restore VSTHRD002
+            Assert.IsFalse(counts.Any(c => c < 0), "A snapshot call returned null Files (worker dropped the call).");
+
+            // The seeded repo has exactly two changed files; every concurrent call must see them.
+            // A crashed worker yields 0 (empty status) instead, so requiring the real count both
+            // proves liveness and guards against the worker silently returning nothing.
+            Assert.IsTrue(counts.All(c => c == 2),
+                "Concurrent status calls disagreed or returned empty (worker likely crashed): [" +
+                string.Join(", ", counts) + "]");
+        }
+
+        [TestMethod]
         public void GetStatus_ResolvesSingleFileThroughRepository()
         {
             string worker = RequireWorker();
@@ -93,6 +164,54 @@ namespace LoreVS.Tests
             LoreFileStatus status = client.GetStatus(Path.Combine(_tempRoot, "loose.txt"));
 
             Assert.AreEqual(LoreFileStatus.NotControlled, status);
+        }
+
+        [TestMethod]
+        public void BlockingCallsUnderSingleThreadedSyncContext_DoNotDeadlock()
+        {
+            string worker = RequireWorker();
+            string repoPath = Path.Combine(_tempRoot, "repo");
+            SeedRepository(worker, repoPath);
+
+            // Visual Studio's main thread runs under a single-threaded, pumped SynchronizationContext.
+            // The glyph-warming and command paths call the synchronous brokered-client APIs (which
+            // bridge async-over-sync) from that thread. If the worker proxy ever captures or posts a
+            // continuation back to that single thread while the thread is blocked waiting for the call
+            // to finish, the result is a deadlock: the worker never even receives the request (the
+            // exact symptom seen in the IDE - "client connected" then silence). This test reproduces
+            // that environment with a real pumped context and fails if the call cannot complete.
+            using var context = new SingleThreadedSynchronizationContext();
+            Exception? failure = null;
+            bool completed = false;
+
+            context.Run(() =>
+            {
+                try
+                {
+                    using var client = new LoreBrokeredClient(worker);
+                    Assert.IsTrue(client.IsAvailable, "IsAvailable returned false under a UI-style sync context.");
+                    int count = client.GetRepositoryStatus(repoPath).Count;
+                    Assert.AreEqual(2, count, "Status under a UI-style sync context returned the wrong count.");
+                    completed = true;
+                }
+                catch (Exception ex)
+                {
+                    failure = ex;
+                }
+                finally
+                {
+                    context.Complete();
+                }
+            }, TimeSpan.FromSeconds(45));
+
+            if (failure != null)
+            {
+                throw new Exception("Brokered call failed under a single-threaded sync context.", failure);
+            }
+
+            Assert.IsTrue(completed,
+                "Brokered calls deadlocked under a single-threaded sync context (the worker never " +
+                "completed the request - reproduces the IDE hang).");
         }
 
         /// <summary>Runs the worker in <c>--seed</c> mode to create a real offline repository.</summary>
@@ -166,5 +285,54 @@ namespace LoreVS.Tests
 
             return null;
         }
+    }
+
+    /// <summary>
+    /// A minimal single-threaded, message-pumping <see cref="SynchronizationContext"/> that mimics
+    /// Visual Studio's main (UI) thread: all posted work runs on one dedicated thread that processes
+    /// a queue. Used to reproduce sync-context-sensitive deadlocks that never appear on the free
+    /// thread pool used by the rest of the integration tests.
+    /// </summary>
+    internal sealed class SingleThreadedSynchronizationContext : SynchronizationContext, IDisposable
+    {
+        private readonly System.Collections.Concurrent.BlockingCollection<(SendOrPostCallback, object?)> _queue =
+            new System.Collections.Concurrent.BlockingCollection<(SendOrPostCallback, object?)>();
+
+        public override void Post(SendOrPostCallback d, object? state) => _queue.Add((d, state));
+
+        public override void Send(SendOrPostCallback d, object? state) =>
+            throw new NotSupportedException("Synchronous Send is not supported on the test sync context.");
+
+        /// <summary>Pumps the queue on the current thread until <see cref="Complete"/> is called or the timeout elapses.</summary>
+        public void Run(Action initialWork, TimeSpan timeout)
+        {
+            SynchronizationContext? previous = Current;
+            SetSynchronizationContext(this);
+            try
+            {
+                Post(_ => initialWork(), null);
+                var clock = Stopwatch.StartNew();
+                while (clock.Elapsed < timeout)
+                {
+                    if (_queue.TryTake(out (SendOrPostCallback callback, object? state) item, 250))
+                    {
+                        item.callback(item.state);
+                    }
+
+                    if (_queue.IsAddingCompleted && _queue.Count == 0)
+                    {
+                        return;
+                    }
+                }
+            }
+            finally
+            {
+                SetSynchronizationContext(previous);
+            }
+        }
+
+        public void Complete() => _queue.CompleteAdding();
+
+        public void Dispose() => _queue.Dispose();
     }
 }

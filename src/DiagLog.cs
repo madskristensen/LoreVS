@@ -1,0 +1,62 @@
+using System;
+using System.Diagnostics;
+using System.IO;
+using System.Text;
+
+namespace LoreVS
+{
+    /// <summary>
+    /// Minimal append-only diagnostic log for the Visual Studio package (in-process) side. The SCC
+    /// activation and glyph entry points are driven by Visual Studio on the UI thread and are hard to
+    /// observe from the outside, so the key decision points record a line here. The log lives at
+    /// <c>%LOCALAPPDATA%\LoreVS\package.log</c> (a sibling of the worker's <c>worker.log</c>) and is
+    /// best-effort: logging never throws.
+    /// </summary>
+    internal static class DiagLog
+    {
+        private static readonly object _gate = new object();
+        private static readonly int _pid = Process.GetCurrentProcess().Id;
+        private static readonly string _path = ResolvePath();
+
+        /// <summary>Absolute path of the log file, for surfacing to the user.</summary>
+        public static string Path => _path;
+
+        private static string ResolvePath()
+        {
+            try
+            {
+                string dir = System.IO.Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "LoreVS");
+                Directory.CreateDirectory(dir);
+                return System.IO.Path.Combine(dir, "package.log");
+            }
+            catch
+            {
+                return System.IO.Path.Combine(System.IO.Path.GetTempPath(), "LoreVS.Package.log");
+            }
+        }
+
+        /// <summary>Appends a single timestamped, process-tagged line. Never throws.</summary>
+        public static void Write(string message)
+        {
+            try
+            {
+                string line = string.Concat(
+                    DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff"),
+                    " [pid ", _pid.ToString(), "] ",
+                    message,
+                    Environment.NewLine);
+
+                lock (_gate)
+                {
+                    File.AppendAllText(_path, line, Encoding.UTF8);
+                }
+            }
+            catch
+            {
+                // Diagnostics must never affect package behavior.
+            }
+        }
+    }
+}

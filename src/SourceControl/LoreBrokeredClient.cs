@@ -75,8 +75,7 @@ namespace LoreVS.SourceControl
                 }
                 catch (Exception ex)
                 {
-                    LogError(ex);
-                    MarkWorkerFailed();
+                    HandleCallFailure(ex);
                     return false;
                 }
             }
@@ -106,6 +105,39 @@ namespace LoreVS.SourceControl
                 : LoreFileStatus.Unchanged;
         }
 
+        /// <summary>
+        /// Returns the cached status for <paramref name="filePath"/> without ever contacting the
+        /// worker. Repository discovery is local, so a path outside any Lore repository resolves to
+        /// <see cref="LoreFileStatus.NotControlled"/>. Returns <see langword="false"/> on a cache
+        /// miss so a UI-thread caller can warm the cache on a background thread instead of blocking
+        /// on the worker.
+        /// </summary>
+        public bool TryGetCachedStatus(string filePath, out LoreFileStatus status)
+        {
+            status = LoreFileStatus.NotControlled;
+            if (string.IsNullOrEmpty(filePath))
+            {
+                return true;
+            }
+
+            string root = FindRepositoryRoot(filePath);
+            if (root == null)
+            {
+                return true;
+            }
+
+            if (_cache.TryGetValue(NormalizePath(root), out CacheEntry entry) &&
+                DateTime.UtcNow - entry.TimestampUtc < CacheLifetime)
+            {
+                status = entry.Statuses.TryGetValue(NormalizePath(filePath), out LoreFileStatus s)
+                    ? s
+                    : LoreFileStatus.Unchanged;
+                return true;
+            }
+
+            return false;
+        }
+
         /// <inheritdoc/>
         public IReadOnlyDictionary<string, LoreFileStatus> GetRepositoryStatus(string repositoryRoot)
         {
@@ -126,8 +158,7 @@ namespace LoreVS.SourceControl
             return fresh;
         }
 
-        private IReadOnlyDictionary<string, LoreFileStatus> QueryStatus(string repositoryRoot)
-        {
+        private IReadOnlyDictionary<string, LoreFileStatus> QueryStatus(string repositoryRoot)        {
             ILoreWorkerContract proxy = GetProxy();
             if (proxy == null)
             {
@@ -136,7 +167,9 @@ namespace LoreVS.SourceControl
 
             try
             {
+                DiagLog.Write($"[rpc] QueryStatus invoking GetRepositoryStatusAsync('{repositoryRoot}')");
                 LoreStatusEntry[] entries = Run(ct => proxy.GetRepositoryStatusAsync(repositoryRoot, ct));
+                DiagLog.Write($"[rpc] QueryStatus got {entries.Length} entr(y/ies)");
                 var result = new Dictionary<string, LoreFileStatus>(StringComparer.OrdinalIgnoreCase);
                 foreach (LoreStatusEntry e in entries)
                 {
@@ -150,9 +183,75 @@ namespace LoreVS.SourceControl
             }
             catch (Exception ex)
             {
-                LogError(ex);
-                MarkWorkerFailed();
+                DiagLog.Write($"[rpc] QueryStatus FAILED: {ex.GetType().Name}: {ex.Message}");
+                HandleCallFailure(ex);
                 return EmptyStatus();
+            }
+        }
+
+        /// <inheritdoc/>
+        public LoreRepositoryInfo GetRepositoryInfo(string repositoryRoot)
+        {
+            if (string.IsNullOrEmpty(repositoryRoot))
+            {
+                return new LoreRepositoryInfo();
+            }
+
+            ILoreWorkerContract proxy = GetProxy();
+            if (proxy == null)
+            {
+                return new LoreRepositoryInfo();
+            }
+
+            try
+            {
+                return Run(ct => proxy.GetRepositoryInfoAsync(repositoryRoot, ct));
+            }
+            catch (Exception ex)
+            {
+                HandleCallFailure(ex);
+                return new LoreRepositoryInfo();
+            }
+        }
+
+        /// <inheritdoc/>
+        public LoreRepositorySnapshot GetRepositorySnapshot(string repositoryRoot)
+        {
+            if (string.IsNullOrEmpty(repositoryRoot))
+            {
+                return new LoreRepositorySnapshot();
+            }
+
+            ILoreWorkerContract proxy = GetProxy();
+            if (proxy == null)
+            {
+                return new LoreRepositorySnapshot();
+            }
+
+            try
+            {
+                LoreRepositorySnapshot snapshot = Run(ct => proxy.GetRepositorySnapshotAsync(repositoryRoot, ct))
+                    ?? new LoreRepositorySnapshot();
+
+                // Refresh the status cache from the same pass so a later GetRepositoryStatus call
+                // (e.g. glyph refresh) is served from cache instead of issuing another status scan.
+                LoreStatusEntry[] entries = snapshot.Files ?? Array.Empty<LoreStatusEntry>();
+                var statuses = new Dictionary<string, LoreFileStatus>(StringComparer.OrdinalIgnoreCase);
+                foreach (LoreStatusEntry e in entries)
+                {
+                    if (!string.IsNullOrEmpty(e.Path))
+                    {
+                        statuses[NormalizePath(e.Path)] = e.Status;
+                    }
+                }
+
+                _cache[NormalizePath(repositoryRoot)] = new CacheEntry(statuses, DateTime.UtcNow);
+                return snapshot;
+            }
+            catch (Exception ex)
+            {
+                HandleCallFailure(ex);
+                return new LoreRepositorySnapshot();
             }
         }
 
@@ -178,6 +277,13 @@ namespace LoreVS.SourceControl
         }
 
         /// <inheritdoc/>
+        public LoreCommandResult Amend(string workingDirectory, string message, string identity)
+        {
+            InvalidateCache();
+            return Invoke((proxy, ct) => proxy.AmendAsync(workingDirectory, message, identity, ct));
+        }
+
+        /// <inheritdoc/>
         public LoreCommandResult Push(string workingDirectory)
         {
             InvalidateCache();
@@ -189,6 +295,19 @@ namespace LoreVS.SourceControl
         {
             InvalidateCache();
             return Invoke((proxy, ct) => proxy.SyncAsync(workingDirectory, ct));
+        }
+
+        /// <inheritdoc/>
+        public LoreCommandResult ResetFiles(string workingDirectory, string[] paths)
+        {
+            InvalidateCache();
+            return Invoke((proxy, ct) => proxy.ResetFilesAsync(workingDirectory, paths, ct));
+        }
+
+        /// <inheritdoc/>
+        public LoreCommandResult WriteFileAtRevision(string workingDirectory, string relativePath, string revision, string outputPath)
+        {
+            return Invoke((proxy, ct) => proxy.WriteFileAtRevisionAsync(workingDirectory, relativePath, revision, outputPath, ct));
         }
 
         /// <summary>Clears any cached status so the next query re-runs against the worker.</summary>
@@ -213,8 +332,7 @@ namespace LoreVS.SourceControl
             }
             catch (Exception ex)
             {
-                LogError(ex);
-                MarkWorkerFailed();
+                HandleCallFailure(ex);
                 return WorkerUnavailable();
             }
         }
@@ -288,14 +406,31 @@ namespace LoreVS.SourceControl
 
             _workerProcess = Process.Start(psi);
 
+            // Drain the worker's stderr. Redirecting it (RedirectStandardError = true) without
+            // reading lets the OS pipe buffer fill, which blocks the worker mid-write and would
+            // hang every synchronous call that is waiting on the worker to respond.
+            if (_workerProcess != null)
+            {
+                _workerProcess.ErrorDataReceived += (_, e) =>
+                {
+                    if (e.Data != null)
+                    {
+                        Debug.WriteLine("[LoreVS.Worker] " + e.Data);
+                    }
+                };
+                _workerProcess.BeginErrorReadLine();
+            }
+
             _pipe = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
             _pipe.Connect(ConnectTimeoutMs);
+            DiagLog.Write($"[rpc] StartWorker connected pipe '{pipeName}'");
 
             var formatter = new SystemTextJsonFormatter();
             var handler = new HeaderDelimitedMessageHandler(_pipe, _pipe, formatter);
             _rpc = new JsonRpc(handler);
             _proxy = _rpc.Attach<ILoreWorkerContract>();
             _rpc.StartListening();
+            DiagLog.Write($"[rpc] StartWorker attached proxy and started listening (StreamJsonRpc {typeof(JsonRpc).Assembly.GetName().Version})");
         }
 
         private void MarkWorkerFailed()
@@ -304,6 +439,47 @@ namespace LoreVS.SourceControl
             {
                 TeardownConnection();
                 _workerUnavailable = true;
+            }
+        }
+
+        /// <summary>
+        /// Decides whether a worker-call exception means the worker transport itself is dead (so it
+        /// must be torn down and permanently disabled) versus a single operation merely failing.
+        /// A failed Lore operation - most importantly a non-zero result surfaced as a
+        /// <see cref="RemoteInvocationException"/>, or a per-call <see cref="TimeoutException"/> -
+        /// must NOT disable the worker: doing so would also kill the unrelated file-status scans
+        /// that drive Solution Explorer glyphs, freezing the whole experience after one bad call.
+        /// Only a genuinely broken pipe / exited process recycles the worker.
+        /// </summary>
+        private bool ShouldRecycleWorker(Exception ex)
+        {
+            if (ex is RemoteInvocationException)
+            {
+                // The remote method ran and threw (e.g. a LoreError). The worker is still healthy.
+                return false;
+            }
+
+            if (ex is ConnectionLostException ||
+                ex is ObjectDisposedException ||
+                ex is IOException)
+            {
+                return true;
+            }
+
+            Process worker = _workerProcess;
+            return worker == null || worker.HasExited;
+        }
+
+        /// <summary>
+        /// Logs <paramref name="ex"/> and recycles the worker only when the transport is dead, so a
+        /// single failed/timed-out operation never disables glyphs and the rest of the session.
+        /// </summary>
+        private void HandleCallFailure(Exception ex)
+        {
+            LogError(ex);
+            if (ShouldRecycleWorker(ex))
+            {
+                MarkWorkerFailed();
             }
         }
 

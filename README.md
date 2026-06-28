@@ -37,6 +37,23 @@ Choose **Lore > Commit to Lore...**, enter a message, and Lore records the
 change. Enable **Push after commit** in the options to automatically push every
 successful commit to the remote.
 
+## Review and commit in the Lore Changes window
+
+Open **Lore > Lore Changes** for a dedicated panel, similar to the built-in Git
+Changes window. The window shows the current branch with incoming/outgoing
+indicators and lists every changed file with a status badge (M, A, D, C). From
+here you can:
+
+- Write a commit message and **Commit All**, or **Commit All and Push** in one
+  step. Tick **Amend latest revision** to fold the changes into the previous
+  revision instead.
+- Double-click a file (or right-click > **Open Diff**) to compare the working
+  copy against the committed version in the native Visual Studio diff viewer.
+- Right-click a file and choose **Discard Changes...** to reset it to the last
+  committed state.
+- Use the toolbar to **Pull** (sync the latest remote revisions), **Push**
+  committed revisions, or **Refresh** the change list.
+
 ## Settings
 
 Configure everything under **Tools > Options > Lore**:

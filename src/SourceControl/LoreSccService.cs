@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Threading;
 using Microsoft.VisualStudio;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Shell.Interop;
@@ -28,6 +29,10 @@ namespace LoreVS.SourceControl
         private readonly HashSet<IVsSccProject2> _registeredProjects = new HashSet<IVsSccProject2>();
 
         private bool _active;
+
+        // 0 = idle, 1 = a background status warm-up is in flight. Prevents a warm-up storm when
+        // Visual Studio asks for glyphs for many files at once.
+        private int _warmingStatus;
 
         public LoreSccService(LoreVSPackage package, ILoreClient client)
         {
@@ -67,6 +72,7 @@ namespace LoreVS.SourceControl
             }
 
             RefreshAllGlyphs();
+            DiagLog.Write($"[scc] OnboardSolution registered {count} project(s) for root '{repositoryRoot}'");
             return count;
         }
 
@@ -75,6 +81,7 @@ namespace LoreVS.SourceControl
         public int SetActive()
         {
             _active = true;
+            DiagLog.Write("[scc] SetActive - Lore is now the active provider");
             LoreLog.WriteLineAsync("[scc] SetActive - Lore is now the active source control provider.").FileAndForget("LoreVS/Scc");
             _package.OnActiveStateChange(this);
             return VSConstants.S_OK;
@@ -83,6 +90,7 @@ namespace LoreVS.SourceControl
         public int SetInactive()
         {
             _active = false;
+            DiagLog.Write("[scc] SetInactive - Lore is no longer the active provider");
             LoreLog.WriteLineAsync("[scc] SetInactive - Lore is no longer the active source control provider.").FileAndForget("LoreVS/Scc");
             _package.OnActiveStateChange(this);
             return VSConstants.S_OK;
@@ -136,7 +144,7 @@ namespace LoreVS.SourceControl
 
             for (int i = 0; i < cFiles; i++)
             {
-                LoreFileStatus status = _client.GetStatus(rgpszFullPaths[i]);
+                LoreFileStatus status = GetStatusForGlyph(rgpszFullPaths[i]);
                 rgsiGlyphs[i] = ToGlyph(status);
 
                 if (rgdwSccStatus != null)
@@ -145,6 +153,7 @@ namespace LoreVS.SourceControl
                 }
             }
 
+            DiagLog.Write($"[scc] GetSccGlyph queried {cFiles} file(s); first='{(cFiles > 0 ? rgpszFullPaths[0] : "<none>")}'");
             return VSConstants.S_OK;
         }
 
@@ -208,7 +217,7 @@ namespace LoreVS.SourceControl
                 return VSConstants.S_OK;
             }
 
-            LoreFileStatus status = _client.GetStatus(path);
+            LoreFileStatus status = GetStatusForGlyph(path);
             pbstrTooltipText = DescribeStatus(status);
             return VSConstants.S_OK;
         }
@@ -223,11 +232,70 @@ namespace LoreVS.SourceControl
         {
             ThreadHelper.ThrowIfNotOnUIThread();
             (_client as LoreBrokeredClient)?.InvalidateCache();
+            RaiseGlyphsChanged();
+        }
 
+        /// <summary>
+        /// Re-raises the SCC glyph for every registered project WITHOUT invalidating the status
+        /// cache, so the background warm-up can repaint once fresh status has been cached.
+        /// </summary>
+        private void RaiseGlyphsChanged()
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+            DiagLog.Write($"[scc] RaiseGlyphsChanged for {_registeredProjects.Count} registered project(s)");
             foreach (IVsSccProject2 project in _registeredProjects)
             {
                 project.SccGlyphChanged(0, null, null, null);
             }
+        }
+
+        /// <summary>
+        /// Returns the Lore status for <paramref name="path"/> for glyph/tooltip rendering without
+        /// ever blocking the UI thread on the out-of-process worker. Visual Studio invokes the SCC
+        /// glyph/tooltip entry points on the UI thread, so on a cache miss this returns a neutral
+        /// status and warms the cache on a background thread, repainting glyphs when the real status
+        /// becomes available.
+        /// </summary>
+        private LoreFileStatus GetStatusForGlyph(string path)
+        {
+            if (_client is LoreBrokeredClient brokered && brokered.TryGetCachedStatus(path, out LoreFileStatus cached))
+            {
+                return cached;
+            }
+
+            if (Interlocked.CompareExchange(ref _warmingStatus, 1, 0) == 0)
+            {
+                DiagLog.Write($"[scc] GetStatusForGlyph cache miss for '{path}' -> warming");
+                WarmStatusAsync(path).FileAndForget("LoreVS/WarmGlyph");
+            }
+
+            return LoreFileStatus.Unchanged;
+        }
+
+        /// <summary>
+        /// Fetches status on a background thread (populating the client cache), then repaints glyphs
+        /// on the UI thread. Keeps the UI thread free while the worker is contacted.
+        /// </summary>
+        private async Task WarmStatusAsync(string path)
+        {
+            LoreFileStatus result = LoreFileStatus.NotControlled;
+            try
+            {
+                await Task.Run(() => result = _client.GetStatus(path));
+            }
+            catch (Exception ex)
+            {
+                DiagLog.Write($"[scc] WarmStatusAsync FAILED for '{path}': {ex.GetType().Name}: {ex.Message}");
+                throw;
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _warmingStatus, 0);
+            }
+
+            DiagLog.Write($"[scc] WarmStatusAsync got {result} for '{path}' -> repaint");
+            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+            RaiseGlyphsChanged();
         }
 
         private static VsStateIcon ToGlyph(LoreFileStatus status)

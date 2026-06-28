@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net48</TargetFramework>
@@ -89,11 +89,13 @@
     <Message Importance="high" Text="Publishing LoreVS.Worker (framework-dependent win-x64) for VSIX packaging..." />
     <Exec Command="dotnet publish &quot;$(LoreWorkerProject)&quot; -c $(Configuration) -r win-x64 --self-contained false -p:SkipLoreWorkerPublish=true" />
     <ItemGroup>
-      <!-- Trim the worker payload to what is actually loaded at runtime. The worker talks JSON-RPC
-           with a SystemTextJsonFormatter, so StreamJsonRpc never loads its Newtonsoft.Json or
-           MessagePack formatters; those (and the debug symbols) are excluded from the VSIX. -->
+      <!-- Ship the worker's full publish output. The worker talks JSON-RPC with a
+           SystemTextJsonFormatter, but StreamJsonRpc still binds to its MessagePack (and
+           Newtonsoft.Json) assemblies at runtime while the read loop starts; omitting them makes
+           the worker connect and then silently fault its read pump, so every call hangs forever.
+           Only the debug symbols are excluded. -->
       <_LoreWorkerPublishFiles Include="$(LoreWorkerPublishDir)**\*.*"
-        Exclude="$(LoreWorkerPublishDir)**\*.pdb;$(LoreWorkerPublishDir)Newtonsoft.Json.dll;$(LoreWorkerPublishDir)MessagePack.dll;$(LoreWorkerPublishDir)MessagePack.Annotations.dll" />
+        Exclude="$(LoreWorkerPublishDir)**\*.pdb" />
       <VSIXSourceItem Include="@(_LoreWorkerPublishFiles)">
         <VSIXSubPath>Worker\%(RecursiveDir)</VSIXSubPath>
       </VSIXSourceItem>
