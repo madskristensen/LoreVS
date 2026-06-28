@@ -89,7 +89,11 @@
     <Message Importance="high" Text="Publishing LoreVS.Worker (framework-dependent win-x64) for VSIX packaging..." />
     <Exec Command="dotnet publish &quot;$(LoreWorkerProject)&quot; -c $(Configuration) -r win-x64 --self-contained false -p:SkipLoreWorkerPublish=true" />
     <ItemGroup>
-      <_LoreWorkerPublishFiles Include="$(LoreWorkerPublishDir)**\*.*" />
+      <!-- Trim the worker payload to what is actually loaded at runtime. The worker talks JSON-RPC
+           with a SystemTextJsonFormatter, so StreamJsonRpc never loads its Newtonsoft.Json or
+           MessagePack formatters; those (and the debug symbols) are excluded from the VSIX. -->
+      <_LoreWorkerPublishFiles Include="$(LoreWorkerPublishDir)**\*.*"
+        Exclude="$(LoreWorkerPublishDir)**\*.pdb;$(LoreWorkerPublishDir)Newtonsoft.Json.dll;$(LoreWorkerPublishDir)MessagePack.dll;$(LoreWorkerPublishDir)MessagePack.Annotations.dll" />
       <VSIXSourceItem Include="@(_LoreWorkerPublishFiles)">
         <VSIXSubPath>Worker\%(RecursiveDir)</VSIXSubPath>
       </VSIXSourceItem>
