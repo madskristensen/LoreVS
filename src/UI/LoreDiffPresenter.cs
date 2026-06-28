@@ -4,7 +4,6 @@ using System.Threading.Tasks;
 using Community.VisualStudio.Toolkit;
 using LoreVS.SourceControl;
 using Microsoft.VisualStudio.Shell;
-using Microsoft.VisualStudio.Shell.Interop;
 
 namespace LoreVS.UI
 {
@@ -15,10 +14,6 @@ namespace LoreVS.UI
     /// </summary>
     internal static class LoreDiffPresenter
     {
-        // __VSDIFFSERVICEOPTIONS.VSDIFFOPT_LeftFileIsTemporary - VS deletes the left file when the
-        // comparison window closes, so the materialized base file is cleaned up automatically.
-        private const uint LeftFileIsTemporary = 0x00000002;
-
         /// <summary>
         /// Shows a diff for <paramref name="item"/>. Added files open directly (no base), deleted
         /// files show their last committed content, and everything else is shown as base vs working.
@@ -55,20 +50,14 @@ namespace LoreVS.UI
                 }
 
                 await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
-                IVsDifferenceService diffService =
-                    await VS.GetServiceAsync<SVsDifferenceService, IVsDifferenceService>();
 
-                string caption = item.FileName + " (Lore diff)";
-                diffService.OpenComparisonWindow2(
-                    leftFileMoniker: basePath,
-                    rightFileMoniker: item.FullPath,
-                    caption: caption,
-                    Tooltip: item.RelativePath,
-                    leftLabel: item.FileName + " (committed)",
-                    rightLabel: item.FileName + " (working)",
-                    inlineLabel: null,
-                    roles: null,
-                    grfDiffOptions: LeftFileIsTemporary);
+                // Use the IDE's built-in diff command, which reliably opens the comparison window in
+                // this environment where IVsDifferenceService.OpenComparisonWindow2 silently no-ops.
+                // Tools.DiffFiles takes "<left> <right> [<leftLabel>] [<rightLabel>]" as quoted args.
+                string arguments = Quote(basePath) + " " + Quote(item.FullPath) + " " +
+                    Quote(item.FileName + " (committed)") + " " + Quote(item.FileName + " (working)");
+
+                await VS.Commands.ExecuteAsync("Tools.DiffFiles", arguments);
             }
             catch (Exception ex)
             {
@@ -98,6 +87,11 @@ namespace LoreVS.UI
 
             return null;
         }
+
+        // Quotes a path/label so it survives the space-delimited Tools.DiffFiles argument string,
+        // escaping any embedded double quotes.
+        private static string Quote(string value) =>
+            "\"" + (value ?? string.Empty).Replace("\"", "\\\"") + "\"";
 
         private static async Task OpenDocumentAsync(string path)
         {

@@ -103,6 +103,14 @@ namespace LoreVS.UI
             }
         }
 
+        // "Open Diff" only makes sense for file leaves; hide it for folder rows and empty space
+        // since the context menu is shared across every row in the list.
+        private void OnContextMenuOpening(object sender, ContextMenuEventArgs e)
+        {
+            bool isFile = ChangesList.SelectedItem is LoreTreeNode node && node.File != null;
+            OpenDiffMenuItem.Visibility = isFile ? Visibility.Visible : Visibility.Collapsed;
+        }
+
         private void OnOpenDiffMenu(object sender, RoutedEventArgs e)
         {
             if (ChangesList.SelectedItem is LoreTreeNode node && node.File != null)

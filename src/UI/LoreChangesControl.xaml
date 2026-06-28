@@ -65,13 +65,14 @@
                      SelectionMode="Extended"
                      HorizontalContentAlignment="Stretch"
                      ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                     MouseDoubleClick="OnChangeDoubleClick">
+                     MouseDoubleClick="OnChangeDoubleClick"
+                     ContextMenuOpening="OnContextMenuOpening">
                 <ListBox.InputBindings>
                     <KeyBinding Key="Return" Command="{x:Static ApplicationCommands.NotACommand}" />
                 </ListBox.InputBindings>
                 <ListBox.ContextMenu>
                     <ContextMenu>
-                        <MenuItem Header="Open Diff" Click="OnOpenDiffMenu" />
+                        <MenuItem x:Name="OpenDiffMenuItem" Header="Open Diff" Click="OnOpenDiffMenu" />
                         <MenuItem Header="Open File" Click="OnOpenFileMenu" />
                         <Separator />
                         <MenuItem Header="Discard Changes..." Click="OnDiscardMenu" />
