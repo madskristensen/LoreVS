@@ -2,12 +2,14 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Community.VisualStudio.Toolkit;
 using LoreVS.Options;
 using LoreVS.SourceControl;
+using Microsoft.VisualStudio.Imaging.Interop;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Shell.Interop;
 using Microsoft.VisualStudio.Threading;
@@ -35,16 +37,27 @@ namespace LoreVS.UI
         private bool _amend;
         private bool _isBusy;
         private string _statusText = string.Empty;
+        private List<LoreTreeNode> _treeRoots = new List<LoreTreeNode>();
+        private IVsImageService2 _imageService;
+        private readonly Dictionary<string, ImageMoniker> _fileIconCache =
+            new Dictionary<string, ImageMoniker>(StringComparer.OrdinalIgnoreCase);
 
         public LoreChangesViewModel()
         {
             Changes = new ObservableCollection<LoreChangeItem>();
+            Nodes = new ObservableCollection<LoreTreeNode>();
         }
 
         public event PropertyChangedEventHandler PropertyChanged;
 
         /// <summary>The changed files currently displayed.</summary>
         public ObservableCollection<LoreChangeItem> Changes { get; }
+
+        /// <summary>
+        /// The changed files arranged as a flattened folder tree (folders back to the repository
+        /// root, files as leaves), honoring each folder's expand/collapse state. Bound to the list.
+        /// </summary>
+        public ObservableCollection<LoreTreeNode> Nodes { get; }
 
         /// <summary>True when the open solution/folder is under Lore source control.</summary>
         public bool HasRepository
@@ -162,6 +175,8 @@ namespace LoreVS.UI
             if (!HasRepository)
             {
                 Changes.Clear();
+                _treeRoots = new List<LoreTreeNode>();
+                Nodes.Clear();
                 BranchText = string.Empty;
                 AheadBehindText = string.Empty;
                 OnPropertyChanged(nameof(HasChanges));
@@ -220,6 +235,9 @@ namespace LoreVS.UI
                     Changes.Add(item);
                 }
 
+                _treeRoots = LoreTreeNode.BuildTree(Changes, ResolveFileIcon);
+                RebuildVisibleNodes();
+
                 StatusText = Changes.Count == 0
                     ? "No changes."
                     : $"{Changes.Count} change(s).";
@@ -237,6 +255,67 @@ namespace LoreVS.UI
 
         /// <summary>True when there is at least one changed file.</summary>
         public bool HasChanges => Changes.Count > 0;
+
+        /// <summary>
+        /// Resolves the shell file-type icon for <paramref name="fullPath"/> via
+        /// <c>IVsImageService2</c>, cached by file extension so each extension is looked up once.
+        /// Must be called on the UI thread. Falls back to a generic document icon on failure.
+        /// </summary>
+        private ImageMoniker ResolveFileIcon(string fullPath)
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+
+            string ext = Path.GetExtension(fullPath) ?? string.Empty;
+            if (_fileIconCache.TryGetValue(ext, out ImageMoniker cached))
+            {
+                return cached;
+            }
+
+            ImageMoniker moniker = Microsoft.VisualStudio.Imaging.KnownMonikers.Document;
+            try
+            {
+                _imageService ??= ServiceProvider.GlobalProvider.GetService(typeof(SVsImageService)) as IVsImageService2;
+                if (_imageService != null)
+                {
+                    moniker = _imageService.GetImageMonikerForFile(fullPath);
+                }
+            }
+            catch (Exception ex)
+            {
+                ex.LogAsync().FireAndForget();
+            }
+
+            _fileIconCache[ext] = moniker;
+            return moniker;
+        }
+
+        /// <summary>
+        /// Toggles a folder node's expand/collapse state and refreshes the visible rows. No-op for
+        /// file leaves.
+        /// </summary>
+        public void ToggleFolder(LoreTreeNode node)
+        {
+            if (node == null || !node.IsFolder)
+            {
+                return;
+            }
+
+            node.IsExpanded = !node.IsExpanded;
+            RebuildVisibleNodes();
+        }
+
+        /// <summary>Re-flattens the folder tree into <see cref="Nodes"/>, honoring expand state.</summary>
+        private void RebuildVisibleNodes()
+        {
+            var visible = new List<LoreTreeNode>();
+            LoreTreeNode.Flatten(_treeRoots, visible);
+
+            Nodes.Clear();
+            foreach (LoreTreeNode node in visible)
+            {
+                Nodes.Add(node);
+            }
+        }
 
         /// <summary>
         /// Stages all changes and commits them with the current message (optionally pushing). When

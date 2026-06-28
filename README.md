@@ -41,13 +41,15 @@ successful commit to the remote.
 
 Open **Lore > Lore Changes** for a dedicated panel, similar to the built-in Git
 Changes window. The window shows the current branch with incoming/outgoing
-indicators and lists every changed file with a status badge (M, A, D, C). From
-here you can:
+indicators and arranges every changed file in a folder tree back to the
+repository root, each file showing a status badge (M, A, D, C) on the right.
+From here you can:
 
 - Write a commit message and **Commit All**, or **Commit All and Push** in one
   step. Tick **Amend latest revision** to fold the changes into the previous
   revision instead.
-- Double-click a file (or right-click > **Open Diff**) to compare the working
+- Expand or collapse folders, and double-click a file (or right-click >
+  **Open Diff**) to compare the working
   copy against the committed version in the native Visual Studio diff viewer.
 - Right-click a file and choose **Discard Changes...** to reset it to the last
   committed state.

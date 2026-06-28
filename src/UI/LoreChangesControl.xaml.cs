@@ -81,31 +81,51 @@ namespace LoreVS.UI
 
         private void OnChangeDoubleClick(object sender, MouseButtonEventArgs e)
         {
-            if (ChangesList.SelectedItem is LoreChangeItem item)
+            if (ChangesList.SelectedItem is LoreTreeNode node)
             {
-                Run(() => ViewModel.ShowDiffAsync(item));
+                if (node.IsFolder)
+                {
+                    ViewModel.ToggleFolder(node);
+                }
+                else if (node.File != null)
+                {
+                    Run(() => ViewModel.ShowDiffAsync(node.File));
+                }
+            }
+        }
+
+        private void OnExpanderClick(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is FrameworkElement element && element.DataContext is LoreTreeNode node)
+            {
+                ViewModel.ToggleFolder(node);
+                e.Handled = true;
             }
         }
 
         private void OnOpenDiffMenu(object sender, RoutedEventArgs e)
         {
-            if (ChangesList.SelectedItem is LoreChangeItem item)
+            if (ChangesList.SelectedItem is LoreTreeNode node && node.File != null)
             {
-                Run(() => ViewModel.ShowDiffAsync(item));
+                Run(() => ViewModel.ShowDiffAsync(node.File));
             }
         }
 
         private void OnOpenFileMenu(object sender, RoutedEventArgs e)
         {
-            if (ChangesList.SelectedItem is LoreChangeItem item)
+            if (ChangesList.SelectedItem is LoreTreeNode node && node.File != null)
             {
-                Run(() => VS.Documents.OpenAsync(item.FullPath));
+                Run(() => VS.Documents.OpenAsync(node.File.FullPath));
             }
         }
 
         private void OnDiscardMenu(object sender, RoutedEventArgs e)
         {
-            IReadOnlyList<LoreChangeItem> items = ChangesList.SelectedItems.Cast<LoreChangeItem>().ToList();
+            IReadOnlyList<LoreChangeItem> items = ChangesList.SelectedItems
+                .Cast<LoreTreeNode>()
+                .Where(n => n.File != null)
+                .Select(n => n.File)
+                .ToList();
             if (items.Count > 0)
             {
                 Run(() => ViewModel.DiscardAsync(items));
