@@ -49,6 +49,10 @@
       <Group guid="LoreVS" id="LoreFileContextGroup" priority="0x0700">
         <Parent guid="guidSHLMainMenu" id="IDM_VS_CTXT_ITEMNODE"/>
       </Group>
+      <!-- Group on the File menu hosting the top-level Clone command (mirrors built-in Git). -->
+      <Group guid="LoreVS" id="LoreFileMenuGroup" priority="0x0300">
+        <Parent guid="guidSHLMainMenu" id="IDM_VS_MENU_FILE"/>
+      </Group>
       <!-- Group on the Lore Changes tool window toolbar that holds its buttons. -->
       <Group guid="LoreVS" id="LoreChangesToolbarGroup" priority="0x0000">
         <Parent guid="LoreVS" id="LoreChangesToolbar"/>
@@ -157,6 +161,10 @@
     <CommandPlacement guid="LoreVS" id="LoreFileContextGroup" priority="0x0700">
       <Parent guid="guidSHLMainMenu" id="IDM_VS_CTXT_PROJNODE"/>
     </CommandPlacement>
+    <!-- Surface Clone on the File menu so it works with nothing open, like Git. -->
+    <CommandPlacement guid="LoreVS" id="CloneCommand" priority="0x0300">
+      <Parent guid="LoreVS" id="LoreFileMenuGroup"/>
+    </CommandPlacement>
   </CommandPlacements>
 
   <Symbols>
@@ -166,6 +174,7 @@
       <IDSymbol name="LoreSubMenu" value="0x0003" />
       <IDSymbol name="LoreChangesToolbar" value="0x0004" />
       <IDSymbol name="LoreChangesToolbarGroup" value="0x0005" />
+      <IDSymbol name="LoreFileMenuGroup" value="0x0009" />
       <IDSymbol name="AddToLoreCommand" value="0x0101" />
       <IDSymbol name="CloneCommand" value="0x0103" />
       <IDSymbol name="CommitToLoreCommand" value="0x0102" />
