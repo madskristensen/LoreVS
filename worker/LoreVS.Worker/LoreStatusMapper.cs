@@ -17,14 +17,21 @@ namespace LoreVS.Worker
         /// Conflict wins over everything; otherwise the file action drives the result, with a
         /// dirty <see cref="LoreFileAction.KEEP"/> reported as <see cref="LoreFileStatus.Modified"/>.
         /// </summary>
-        public static LoreFileStatus Map(LoreRepositoryStatusFileEventDataFFI file)
+        public static LoreFileStatus Map(LoreRepositoryStatusFileEventDataFFI file) =>
+            Map(file.Action, file.FlagConflict, file.FlagConflictUnresolved, file.FlagDirty);
+
+        /// <summary>
+        /// Maps the discrete status inputs to a <see cref="LoreFileStatus"/>. Split out from the FFI
+        /// event so the mapping is unit-testable without constructing the native event type.
+        /// </summary>
+        public static LoreFileStatus Map(LoreFileAction action, bool conflict, bool conflictUnresolved, bool dirty)
         {
-            if (file.FlagConflict || file.FlagConflictUnresolved)
+            if (conflict || conflictUnresolved)
             {
                 return LoreFileStatus.Conflicted;
             }
 
-            switch (file.Action)
+            switch (action)
             {
                 case LoreFileAction.ADD:
                     return LoreFileStatus.Added;
@@ -35,7 +42,7 @@ namespace LoreVS.Worker
                     return LoreFileStatus.Modified;
                 case LoreFileAction.KEEP:
                 default:
-                    return file.FlagDirty ? LoreFileStatus.Modified : LoreFileStatus.Unchanged;
+                    return dirty ? LoreFileStatus.Modified : LoreFileStatus.Unchanged;
             }
         }
     }
