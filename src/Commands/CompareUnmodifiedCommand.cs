@@ -42,7 +42,9 @@ namespace LoreVS.Commands
                 return;
             }
 
-            LoreFileStatus status = client.GetStatus(fullPath);
+            // GetStatus can round-trip to the out-of-process worker on a cache miss; keep it off the
+            // UI thread so a slow/cold worker cannot freeze Visual Studio.
+            LoreFileStatus status = await Task.Run(() => client.GetStatus(fullPath));
             await LoreDiffPresenter.ShowAsync(client, root, new LoreChangeItem(fullPath, root, status));
         }
     }

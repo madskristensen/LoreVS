@@ -33,11 +33,16 @@ Paste a repository URL (e.g. `lore://127.0.0.1:41337/my-project`) and pick a
 local folder; Lore checks the server is reachable, clones the working tree, and
 records the remote in `.lore` so push and pull work immediately.
 
+![Clone Repository](art/clone-repo.png)
+
 ## See status at a glance
 
 Once a solution is controlled, Visual Studio shows Lore status glyphs next to
 files in Solution Explorer. Saving a document refreshes its glyph automatically,
-and you can force a refresh any time with **Lore > Refresh Lore Status**.
+and you can force a refresh any time with the **Refresh** button in the Lore
+Changes window.
+
+![Solution Explorer](art/solution-explorer.png)
 
 Right-click a file under **Lore** for **Undo Changes** (revert edits to the
 committed version), **Compare with Unmodified** (diff against the committed
@@ -46,7 +51,11 @@ version), and **Ignore and Untrack Item** (adds it to `.loreignore`).
 ## Review and commit in the Lore Changes window
 
 Choose **Lore > Commit to Lore...** to open a dedicated panel, similar to the built-in Git
-Changes window. The window shows the current branch with incoming/outgoing
+Changes window.
+
+![Lore Changes Window](art/lore-changes-window.png)
+
+The window shows the current branch with incoming/outgoing
 indicators and arranges every changed file in a folder tree back to the
 repository root, each file showing a status badge (M, A, D, C) on the right.
 From here you can:

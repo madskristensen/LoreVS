@@ -1,4 +1,3 @@
-using System;
 using System.Runtime.InteropServices;
 
 namespace LoreVS.UI
@@ -17,6 +16,8 @@ namespace LoreVS.UI
         public static string? Pick(IntPtr owner, string title, string? initialPath)
         {
             var dialog = (IFileOpenDialog)new FileOpenDialog();
+            IShellItem? item = null;
+            IShellItem? result = null;
             try
             {
                 dialog.GetOptions(out uint options);
@@ -27,7 +28,7 @@ namespace LoreVS.UI
                 }
 
                 if (!string.IsNullOrEmpty(initialPath) &&
-                    SHCreateItemFromParsingName(initialPath!, IntPtr.Zero, typeof(IShellItem).GUID, out IShellItem item) == 0)
+                    SHCreateItemFromParsingName(initialPath!, IntPtr.Zero, typeof(IShellItem).GUID, out item) == 0)
                 {
                     dialog.SetFolder(item);
                 }
@@ -37,7 +38,7 @@ namespace LoreVS.UI
                     return null;
                 }
 
-                dialog.GetResult(out IShellItem result);
+                dialog.GetResult(out result);
                 result.GetDisplayName(SIGDN_FILESYSPATH, out string path);
                 return path;
             }
@@ -48,6 +49,16 @@ namespace LoreVS.UI
             }
             finally
             {
+                if (result != null)
+                {
+                    Marshal.ReleaseComObject(result);
+                }
+
+                if (item != null)
+                {
+                    Marshal.ReleaseComObject(item);
+                }
+
                 Marshal.ReleaseComObject(dialog);
             }
         }

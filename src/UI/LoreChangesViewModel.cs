@@ -31,6 +31,8 @@ namespace LoreVS.UI
 
         private bool _hasRepository;
         private bool _subscribed;
+        private bool _refreshRunning;
+        private bool _refreshQueued;
         private string _branchText = string.Empty;
         private string _aheadBehindText = string.Empty;
         private string _commitMessage = string.Empty;
@@ -118,9 +120,10 @@ namespace LoreVS.UI
         internal ILoreClient? Client => _client;
 
         /// <summary>
-        /// Resolves the Lore client and options once, subscribes to solution and folder open/close
-        /// events so the window stays in sync with the open workspace, and loads the initial change
-        /// list. Called once when the window first appears.
+        /// Resolves the Lore client and options once and loads the initial change list. Called once
+        /// when the window first appears. Workspace event subscriptions are managed separately via
+        /// <see cref="SubscribeEvents"/>/<see cref="UnsubscribeEvents"/> so they can be released when
+        /// the window is torn down.
         /// </summary>
         public async Task InitializeAsync()
         {
@@ -133,24 +136,53 @@ namespace LoreVS.UI
             _identity = options.Identity ?? string.Empty;
             _autoPushOnCommit = options.AutoPushOnCommit;
 
-            if (!_subscribed)
+            await ReloadAsync();
+        }
+
+        /// <summary>
+        /// Subscribes to solution/folder/document events so the window stays in sync with the open
+        /// workspace. Paired with <see cref="UnsubscribeEvents"/> from the hosting control's
+        /// Loaded/Unloaded handlers, so the long-lived static VS events never root a closed tool
+        /// window (which would leak the view model and fire stale refreshes on every reopen).
+        /// </summary>
+        public void SubscribeEvents()
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+            if (_subscribed)
             {
-                _subscribed = true;
-
-                // A controlled solution is usually opened AFTER this window is first shown, so the
-                // binding has to be re-resolved whenever the open solution or folder changes -
-                // otherwise the window would stay stuck on "not under Lore source control".
-                VS.Events.SolutionEvents.OnAfterOpenSolution += OnSolutionOpened;
-                VS.Events.SolutionEvents.OnAfterCloseSolution += ReloadSafe;
-                VS.Events.SolutionEvents.OnAfterOpenFolder += OnFolderChanged;
-                VS.Events.SolutionEvents.OnAfterCloseFolder += OnFolderChanged;
-
-                // Saving a document changes its Lore status, so refresh the list to reflect it -
-                // the same trigger the package uses to update Solution Explorer glyphs.
-                VS.Events.DocumentEvents.Saved += OnDocumentSaved;
+                return;
             }
 
-            await ReloadAsync();
+            _subscribed = true;
+
+            // A controlled solution is usually opened AFTER this window is first shown, so the
+            // binding has to be re-resolved whenever the open solution or folder changes -
+            // otherwise the window would stay stuck on "not under Lore source control".
+            VS.Events.SolutionEvents.OnAfterOpenSolution += OnSolutionOpened;
+            VS.Events.SolutionEvents.OnAfterCloseSolution += ReloadSafe;
+            VS.Events.SolutionEvents.OnAfterOpenFolder += OnFolderChanged;
+            VS.Events.SolutionEvents.OnAfterCloseFolder += OnFolderChanged;
+
+            // Saving a document changes its Lore status, so refresh the list to reflect it -
+            // the same trigger the package uses to update Solution Explorer glyphs.
+            VS.Events.DocumentEvents.Saved += OnDocumentSaved;
+        }
+
+        /// <summary>Detaches every workspace event subscribed by <see cref="SubscribeEvents"/>.</summary>
+        public void UnsubscribeEvents()
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+            if (!_subscribed)
+            {
+                return;
+            }
+
+            _subscribed = false;
+            VS.Events.SolutionEvents.OnAfterOpenSolution -= OnSolutionOpened;
+            VS.Events.SolutionEvents.OnAfterCloseSolution -= ReloadSafe;
+            VS.Events.SolutionEvents.OnAfterOpenFolder -= OnFolderChanged;
+            VS.Events.SolutionEvents.OnAfterCloseFolder -= OnFolderChanged;
+            VS.Events.DocumentEvents.Saved -= OnDocumentSaved;
         }
 
         private void OnDocumentSaved(string filePath) => RefreshSafe();
@@ -206,6 +238,36 @@ namespace LoreVS.UI
         /// <summary>Re-queries Lore status and branch info and repopulates the change list.</summary>
         public async Task RefreshAsync()
         {
+            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+
+            // Serialize refreshes: if one is already running, coalesce a single follow-up pass and let
+            // the in-flight refresh pick it up when it finishes. Overlapping refreshes would issue
+            // concurrent status scans, which the native SDK does not reliably tolerate. The flags are
+            // only ever read/written on the UI thread, so no further locking is needed.
+            if (_refreshRunning)
+            {
+                _refreshQueued = true;
+                return;
+            }
+
+            _refreshRunning = true;
+            try
+            {
+                do
+                {
+                    _refreshQueued = false;
+                    await RefreshCoreAsync();
+                }
+                while (_refreshQueued);
+            }
+            finally
+            {
+                _refreshRunning = false;
+            }
+        }
+
+        private async Task RefreshCoreAsync()
+        {
             if (!HasRepository || _client == null)
             {
                 return;
@@ -218,9 +280,10 @@ namespace LoreVS.UI
 
                 // Fetch the change list AND branch/ahead-behind summary from a SINGLE status pass.
                 // The native SDK does not reliably tolerate two back-to-back status scans, so the
-                // combined snapshot replaces the old status+info pair and halves the work. It is
-                // time-bounded so a revision lookup that blocks on a remote cannot freeze the window.
-                LoreRepositorySnapshot snapshot = await GetSnapshotWithTimeoutAsync(client, root);
+                // combined snapshot replaces the old status+info pair and halves the work. The
+                // underlying RPC is time-bounded so a revision lookup that blocks on a remote cannot
+                // freeze the window.
+                LoreRepositorySnapshot snapshot = await GetSnapshotAsync(client, root);
 
                 await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
 
@@ -491,23 +554,17 @@ namespace LoreVS.UI
 
         /// <summary>
         /// Fetches the repository snapshot (changed files + branch/ahead-behind summary) off the UI
-        /// thread, but gives up after a short timeout so a revision lookup that blocks (for example
-        /// contacting a remote) can never freeze the window. Returns an empty snapshot on timeout or
-        /// failure, which the caller renders as no changes and an unknown branch rather than an error.
+        /// thread. The brokered client bounds this call with its own per-call timeout, so awaiting the
+        /// worker thread to completion can neither freeze the window nor leave an orphaned status scan
+        /// running into the next refresh (the native SDK does not tolerate concurrent scans). Returns
+        /// an empty snapshot on failure, which the caller renders as no changes and an unknown branch.
         /// </summary>
-        private static async Task<LoreRepositorySnapshot> GetSnapshotWithTimeoutAsync(ILoreClient client, string root)
+        private static async Task<LoreRepositorySnapshot> GetSnapshotAsync(ILoreClient client, string root)
         {
-            const int timeoutMs = 8000;
             try
             {
-                Task<LoreRepositorySnapshot> work = Task.Run(() => client.GetRepositorySnapshot(root));
-                Task completed = await Task.WhenAny(work, Task.Delay(timeoutMs)).ConfigureAwait(false);
-                if (completed != work)
-                {
-                    return new LoreRepositorySnapshot();
-                }
-
-                return await work.ConfigureAwait(false) ?? new LoreRepositorySnapshot();
+                return await Task.Run(() => client.GetRepositorySnapshot(root)).ConfigureAwait(false)
+                    ?? new LoreRepositorySnapshot();
             }
             catch (Exception ex)
             {

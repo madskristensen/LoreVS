@@ -40,18 +40,29 @@ namespace LoreVS.UI
         private void OnLoaded(object sender, RoutedEventArgs e)
         {
             Current = this;
+            ViewModel.SubscribeEvents();
 
             // Loaded can fire again after docking or auto-hide, so only kick off the (one-time)
-            // initialization the first time. Later workspace changes are handled by the view model.
+            // initialization the first time. On later loads, re-resolve the binding to catch any
+            // workspace change that happened while the window was unloaded (events were detached).
             if (!_initialized)
             {
                 _initialized = true;
                 Run(ViewModel.InitializeAsync);
             }
+            else
+            {
+                Run(ViewModel.ReloadAsync);
+            }
         }
 
         private void OnUnloaded(object sender, RoutedEventArgs e)
         {
+            // Detach the long-lived static VS events so a docked-away/closed window is not rooted
+            // (and re-subscribed) - otherwise every reopen would leak this control and fire stale
+            // refreshes. Re-subscribed on the next Loaded.
+            ViewModel.UnsubscribeEvents();
+
             if (Current == this)
             {
                 Current = null;

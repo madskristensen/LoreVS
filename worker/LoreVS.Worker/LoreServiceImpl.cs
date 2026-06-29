@@ -396,29 +396,37 @@ namespace LoreVS.Worker
         /// </summary>
         private static async Task<LoreCommandResult> ExecuteAsync(string? identity, bool offline, string workingDirectory, Action<LoreGlobalArgs> operation)
         {
-            // LoreGlobalArgs is a disposable value type, so it cannot be mutated through a 'using'
-            // local; build it, set the optional identity, and dispose explicitly in finally.
-            var globalArgs = new LoreGlobalArgs { RepositoryPath = workingDirectory, Offline = offline };
-            if (!string.IsNullOrWhiteSpace(identity))
-            {
-                globalArgs.Identity = identity;
-            }
-
             try
             {
-                // The native SDK blocks its own runtime; run on a worker thread under the global SDK
-                // gate so we never start a tokio runtime from within another one or concurrently with
-                // an in-flight status scan.
-                await RunExclusiveAsync(() => operation(globalArgs)).ConfigureAwait(false);
+                // Build, use, and dispose the disposable value-type args entirely inside the worker
+                // thread (the same pattern the status methods use). On a timeout, RunExclusiveAsync
+                // abandons this action while it is still running the native call, so the args lifetime
+                // MUST be owned by that thread - disposing them from an outer 'finally' would free the
+                // native handle while the abandoned native operation is still using it (a use-after-free
+                // across the managed/native boundary that crashes the whole worker process).
+                await RunExclusiveAsync(() =>
+                {
+                    var globalArgs = new LoreGlobalArgs { RepositoryPath = workingDirectory, Offline = offline };
+                    if (!string.IsNullOrWhiteSpace(identity))
+                    {
+                        globalArgs.Identity = identity;
+                    }
+
+                    try
+                    {
+                        operation(globalArgs);
+                    }
+                    finally
+                    {
+                        globalArgs.Dispose();
+                    }
+                }).ConfigureAwait(false);
+
                 return new LoreCommandResult(true, 0, string.Empty, string.Empty);
             }
             catch (Exception ex)
             {
                 return new LoreCommandResult(false, 1, string.Empty, Unwrap(ex).Message);
-            }
-            finally
-            {
-                globalArgs.Dispose();
             }
         }
 

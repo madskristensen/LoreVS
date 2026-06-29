@@ -23,10 +23,18 @@ namespace LoreVS.Server
                 var request = (HttpWebRequest)WebRequest.Create(endpoint.HealthCheckUrl);
                 request.Method = "GET";
                 request.Timeout = 3000;
-                using (cancellationToken.Register(request.Abort))
-                using (var response = (HttpWebResponse)await request.GetResponseAsync().ConfigureAwait(false))
+
+                // HttpWebRequest.Timeout only applies to the synchronous APIs; GetResponseAsync ignores
+                // it. Drive the timeout ourselves (linked to any caller token) and Abort the request
+                // when it fires, otherwise an unresponsive host could hang for the OS connect timeout.
+                using (var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
                 {
-                    return (int)response.StatusCode < 400;
+                    timeoutCts.CancelAfter(TimeSpan.FromSeconds(3));
+                    using (timeoutCts.Token.Register(request.Abort))
+                    using (var response = (HttpWebResponse)await request.GetResponseAsync().ConfigureAwait(false))
+                    {
+                        return (int)response.StatusCode < 400;
+                    }
                 }
             }
             catch (Exception ex)

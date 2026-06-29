@@ -72,7 +72,7 @@
         </Strings>
       </Button>
       <Button guid="LoreVS" id="CloneCommand" priority="0x0105" type="Button">
-        <Parent guid="LoreVS" id="MyMenuGroup" />
+        <Parent guid="LoreVS" id="LoreFileMenuGroup" />
         <Icon guid="ImageCatalogGuid" id="Download" />
         <CommandFlag>IconIsMoniker</CommandFlag>
         <Strings>
@@ -161,11 +161,7 @@
     <CommandPlacement guid="LoreVS" id="LoreFileContextGroup" priority="0x0700">
       <Parent guid="guidSHLMainMenu" id="IDM_VS_CTXT_PROJNODE"/>
     </CommandPlacement>
-    <!-- Surface Clone on the File menu so it works with nothing open, like Git. -->
-    <CommandPlacement guid="LoreVS" id="CloneCommand" priority="0x0300">
-      <Parent guid="LoreVS" id="LoreFileMenuGroup"/>
-    </CommandPlacement>
-  </CommandPlacements>
+    </CommandPlacements>
 
   <Symbols>
     <GuidSymbol name="LoreVS" value="{75c63f82-bb45-456a-be72-19ad0c8e33b4}">

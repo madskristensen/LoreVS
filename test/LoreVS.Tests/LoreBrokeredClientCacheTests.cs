@@ -84,6 +84,29 @@ namespace LoreVS.Tests
             Assert.AreEqual(LoreFileStatus.NotControlled, status);
         }
 
+        [TestMethod]
+        public void IsAvailable_MissingWorkerPayload_ReturnsFalseWithoutThrowing()
+        {
+            // A missing worker executable is the one unrecoverable launch failure; the client must
+            // report unavailable rather than throw, so the IDE can surface a clear message.
+            using var client = new LoreBrokeredClient(MissingWorkerPath());
+
+            Assert.IsFalse(client.IsAvailable);
+        }
+
+        [TestMethod]
+        public void WriteOperation_MissingWorkerPayload_ReturnsFailedResult()
+        {
+            // With no worker payload deployed, write operations must fail gracefully with a result the
+            // command layer can show, never throw or hang.
+            using var client = new LoreBrokeredClient(MissingWorkerPath());
+
+            LoreCommandResult result = client.Commit(_tempRoot, "message", identity: string.Empty);
+
+            Assert.IsFalse(result.Success);
+            Assert.IsFalse(string.IsNullOrWhiteSpace(result.CombinedText));
+        }
+
         private string MissingWorkerPath() => Path.Combine(_tempRoot, "no-such-worker.exe");
     }
 }

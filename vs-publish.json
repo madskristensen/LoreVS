@@ -6,6 +6,20 @@
     "internalName": "LoreVS",
     "tags": [ "lore", "source control", "scc", "version control" ]
   },
+  "assetFiles": [
+    {
+      "pathOnDisk": "art/lore-changes-window.png",
+      "targetPath": "art/lore-changes-window.png"
+    },
+    {
+      "pathOnDisk": "art/clone-repo.png",
+      "targetPath": "art/clone-repo.png"
+    },
+    {
+      "pathOnDisk": "art/solution-explorer.png",
+      "targetPath": "art/solution-explorer.png"
+    }
+  ],
   "overview": "README.md",
   "publisher": "MadsKristensen",
   "repo": "https://github.com/madskristensen/LoreVS"

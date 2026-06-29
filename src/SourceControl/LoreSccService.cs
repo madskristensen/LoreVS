@@ -5,6 +5,8 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Microsoft.VisualStudio;
+using Microsoft.VisualStudio.Imaging;
+using Microsoft.VisualStudio.Imaging.Interop;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Shell.Interop;
 
@@ -15,10 +17,12 @@ namespace LoreVS.SourceControl
     /// <see cref="LoreVSPackage"/> and registered with the Visual Studio SCC manager.
     /// For the read-only MVP it implements provider activation
     /// (<see cref="IVsSccProvider"/>) and status glyphs/tooltips
-    /// (<see cref="IVsSccManager2"/>, <see cref="IVsSccManagerTooltip"/>).
+    /// (<see cref="IVsSccManager2"/>, <see cref="IVsSccManagerTooltip"/>). It also supplies a
+    /// custom green-plus glyph for newly added (not yet committed) files via
+    /// <see cref="IVsSccGlyphs2"/>.
     /// </summary>
     [Guid(LoreGuids.SccServiceString)]
-    public sealed class LoreSccService : IVsSccProvider, IVsSccManager2, IVsSccManagerTooltip
+    public sealed class LoreSccService : IVsSccProvider, IVsSccManager2, IVsSccManagerTooltip, IVsSccGlyphs2
     {
         // Subset of SCC_STATUS_* flags (sccex.h) reported via rgdwSccStatus.
         private const uint SccStatusNotControlled = 0x0000;
@@ -36,6 +40,13 @@ namespace LoreVS.SourceControl
         // letting distinct repositories warm concurrently.
         private readonly ConcurrentDictionary<string, byte> _warmingRoots =
             new ConcurrentDictionary<string, byte>(StringComparer.OrdinalIgnoreCase);
+
+        // Index of the first custom SCC glyph in Visual Studio's merged image list, supplied via
+        // IVsSccGlyphs2.GetCustomGlyphMonikerList. Custom glyphs are addressed as
+        // (VsStateIcon)(_customGlyphBaseIndex + offset). Until VS asks for the custom list, added
+        // files fall back to a built-in glyph.
+        private uint _customGlyphBaseIndex;
+        private bool _customGlyphsRegistered;
 
         public LoreSccService(LoreVSPackage package, ILoreClient client)
         {
@@ -229,6 +240,26 @@ namespace LoreVS.SourceControl
 
         #endregion
 
+        #region IVsSccGlyphs2
+
+        // Offsets of each custom glyph within the list returned to Visual Studio. Only the
+        // "added but not yet committed" state uses a custom (green-plus) glyph today.
+        private const uint CustomGlyphAddedOffset = 0;
+
+        private static readonly ImageMoniker[] CustomGlyphMonikers =
+        {
+            KnownMonikers.PendingAddNode,
+        };
+
+        public IVsImageMonikerImageList GetCustomGlyphMonikerList(uint baseIndex)
+        {
+            _customGlyphBaseIndex = baseIndex;
+            _customGlyphsRegistered = true;
+            return new LoreSccGlyphList(CustomGlyphMonikers);
+        }
+
+        #endregion
+
         /// <summary>
         /// Asks every registered project to re-query glyphs for all of its items. Called
         /// after activation and by the "Refresh Lore Status" command.
@@ -306,7 +337,7 @@ namespace LoreVS.SourceControl
             RaiseGlyphsChanged();
         }
 
-        private static VsStateIcon ToGlyph(LoreFileStatus status)
+        private VsStateIcon ToGlyph(LoreFileStatus status)
         {
             switch (status)
             {
@@ -315,7 +346,9 @@ namespace LoreVS.SourceControl
                 case LoreFileStatus.Modified:
                     return VsStateIcon.STATEICON_CHECKEDOUT;
                 case LoreFileStatus.Added:
-                    return VsStateIcon.STATEICON_CHECKEDOUT;
+                    return _customGlyphsRegistered
+                        ? (VsStateIcon)(_customGlyphBaseIndex + CustomGlyphAddedOffset)
+                        : VsStateIcon.STATEICON_CHECKEDOUT;
                 case LoreFileStatus.Deleted:
                     return VsStateIcon.STATEICON_EXCLUDEDFROMSCC;
                 case LoreFileStatus.Conflicted:

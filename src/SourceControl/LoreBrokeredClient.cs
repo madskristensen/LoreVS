@@ -34,6 +34,22 @@ namespace LoreVS.SourceControl
         /// <summary>How long to wait for the worker's named pipe to come up.</summary>
         private const int ConnectTimeoutMs = 15000;
 
+        /// <summary>
+        /// Safety-net timeout for a single worker call so a wedged worker can never hang the caller
+        /// forever. Generous so legitimately slow writes (push/sync) are bounded by the worker's own
+        /// handling rather than tripping this.
+        /// </summary>
+        private const int DefaultCallTimeoutMs = 60000;
+
+        /// <summary>
+        /// Shorter timeout for read/status calls, which are expected to be quick, so the Changes
+        /// window and Solution Explorer glyph scans stay responsive when the worker is slow.
+        /// </summary>
+        private const int StatusCallTimeoutMs = 15000;
+
+        /// <summary>How long to wait before retrying the worker launch after a transient failure.</summary>
+        private static readonly TimeSpan LaunchRetryBackoff = TimeSpan.FromSeconds(5);
+
         private readonly object _gate = new object();
         private readonly string? _workerPath;
         private readonly ConcurrentDictionary<string, CacheEntry> _cache =
@@ -44,6 +60,7 @@ namespace LoreVS.SourceControl
         private JsonRpc? _rpc;
         private ILoreWorkerContract? _proxy;
         private bool _workerUnavailable;
+        private DateTime _nextLaunchAttemptUtc = DateTime.MinValue;
         private bool _disposed;
 
         /// <summary>
@@ -71,7 +88,7 @@ namespace LoreVS.SourceControl
 
                 try
                 {
-                    return Run(ct => proxy.IsAvailableAsync(ct));
+                    return Run(ct => proxy.IsAvailableAsync(ct), StatusCallTimeoutMs);
                 }
                 catch (Exception ex)
                 {
@@ -168,7 +185,7 @@ namespace LoreVS.SourceControl
             try
             {
                 DiagLog.Write($"[rpc] QueryStatus invoking GetRepositoryStatusAsync('{repositoryRoot}')");
-                LoreStatusEntry[] entries = Run(ct => proxy.GetRepositoryStatusAsync(repositoryRoot, ct));
+                LoreStatusEntry[] entries = Run(ct => proxy.GetRepositoryStatusAsync(repositoryRoot, ct), StatusCallTimeoutMs);
                 DiagLog.Write($"[rpc] QueryStatus got {entries.Length} entr(y/ies)");
                 var result = new Dictionary<string, LoreFileStatus>(StringComparer.OrdinalIgnoreCase);
                 foreach (LoreStatusEntry e in entries)
@@ -205,7 +222,7 @@ namespace LoreVS.SourceControl
 
             try
             {
-                return Run(ct => proxy.GetRepositoryInfoAsync(repositoryRoot, ct));
+                return Run(ct => proxy.GetRepositoryInfoAsync(repositoryRoot, ct), StatusCallTimeoutMs);
             }
             catch (Exception ex)
             {
@@ -230,7 +247,7 @@ namespace LoreVS.SourceControl
 
             try
             {
-                LoreRepositorySnapshot snapshot = Run(ct => proxy.GetRepositorySnapshotAsync(repositoryRoot, ct))
+                LoreRepositorySnapshot snapshot = Run(ct => proxy.GetRepositorySnapshotAsync(repositoryRoot, ct), StatusCallTimeoutMs)
                     ?? new LoreRepositorySnapshot();
 
                 // Refresh the status cache from the same pass so a later GetRepositoryStatus call
@@ -375,16 +392,36 @@ namespace LoreVS.SourceControl
                     TeardownConnection();
                 }
 
+                // Back off briefly after a transient launch failure so rapid callers (glyph queries)
+                // do not spin relaunching the worker every time.
+                if (DateTime.UtcNow < _nextLaunchAttemptUtc)
+                {
+                    return null;
+                }
+
                 try
                 {
                     StartWorker();
+                    _nextLaunchAttemptUtc = DateTime.MinValue;
                     return _proxy;
                 }
                 catch (Exception ex)
                 {
                     LogError(ex);
                     TeardownConnection();
-                    _workerUnavailable = true;
+
+                    // Only a genuinely missing worker payload is unrecoverable for the session. Transient
+                    // failures (pipe connect timeout, a momentary Process.Start / AV file lock) must not
+                    // permanently disable the client - allow a later call to retry after a short backoff.
+                    if (ex is FileNotFoundException)
+                    {
+                        _workerUnavailable = true;
+                    }
+                    else
+                    {
+                        _nextLaunchAttemptUtc = DateTime.UtcNow + LaunchRetryBackoff;
+                    }
+
                     return null;
                 }
             }
@@ -515,14 +552,28 @@ namespace LoreVS.SourceControl
         }
 
         /// <summary>
-        /// Runs an async worker call to completion on a worker thread. <see cref="Task.Run{T}(Func{Task{T}})"/>
+        /// Runs an async worker call to completion on a worker thread, bounded by a per-call timeout
+        /// so a wedged worker can never hang the caller forever. <see cref="Task.Run{T}(Func{Task{T}}, CancellationToken)"/>
         /// detaches from any captured synchronization context so blocking here cannot deadlock the UI thread.
         /// </summary>
-        private static T Run<T>(Func<CancellationToken, Task<T>> operation)
+        private static T Run<T>(Func<CancellationToken, Task<T>> operation, int timeoutMs = DefaultCallTimeoutMs)
         {
-            #pragma warning disable VSTHRD002 // callers always invoke off the UI thread, and Task.Run detaches from any captured context
-            return Task.Run(() => operation(CancellationToken.None)).GetAwaiter().GetResult();
+            using (var cts = new CancellationTokenSource(timeoutMs))
+            {
+                try
+                {
+#pragma warning disable VSTHRD002 // callers always invoke off the UI thread, and Task.Run detaches from any captured context
+                    return Task.Run(() => operation(cts.Token), cts.Token).GetAwaiter().GetResult();
 #pragma warning restore VSTHRD002
+                }
+                catch (OperationCanceledException) when (cts.IsCancellationRequested)
+                {
+                    // Surface a stuck worker as a per-call timeout. HandleCallFailure treats this as a
+                    // non-fatal operation failure (it does not recycle the worker), so unrelated status
+                    // scans keep working instead of the whole session freezing on one wedged call.
+                    throw new TimeoutException($"The Lore worker did not respond within {timeoutMs} ms.");
+                }
+            }
         }
 
         private static string DefaultWorkerPath()
