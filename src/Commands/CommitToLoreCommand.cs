@@ -40,7 +40,7 @@ namespace LoreVS.Commands
                 return;
             }
 
-            if (!client.IsAvailable)
+            if (!await Task.Run(() => client.IsAvailable))
             {
                 await VS.MessageBox.ShowErrorAsync("Lore",
                     "The Lore worker could not be started, so the SDK is unavailable. Reinstall the " +

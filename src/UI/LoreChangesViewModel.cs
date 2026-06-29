@@ -216,18 +216,18 @@ namespace LoreVS.UI
                 string root = _repositoryRoot;
                 ILoreClient client = _client;
 
-                // 1) File status drives the change list and uses the same scan that powers Solution
-                //    Explorer glyphs, so it is reliable. Fetch and render it FIRST so the list always
-                //    appears even if the branch-info lookup below is slow or unavailable.
-                IReadOnlyDictionary<string, LoreFileStatus> statuses =
-                    await Task.Run(() => client.GetRepositoryStatus(root));
+                // Fetch the change list AND branch/ahead-behind summary from a SINGLE status pass.
+                // The native SDK does not reliably tolerate two back-to-back status scans, so the
+                // combined snapshot replaces the old status+info pair and halves the work. It is
+                // time-bounded so a revision lookup that blocks on a remote cannot freeze the window.
+                LoreRepositorySnapshot snapshot = await GetSnapshotWithTimeoutAsync(client, root);
 
                 await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
 
                 Changes.Clear();
-                IEnumerable<LoreChangeItem> items = statuses
-                    .Where(kvp => IsChange(kvp.Value))
-                    .Select(kvp => new LoreChangeItem(kvp.Key, root, kvp.Value))
+                IEnumerable<LoreChangeItem> items = (snapshot?.Files ?? Array.Empty<LoreStatusEntry>())
+                    .Where(e => !string.IsNullOrEmpty(e.Path) && IsChange(e.Status))
+                    .Select(e => new LoreChangeItem(e.Path, root, e.Status))
                     .OrderBy(i => i.RelativePath, StringComparer.OrdinalIgnoreCase);
 
                 foreach (LoreChangeItem item in items)
@@ -243,13 +243,7 @@ namespace LoreVS.UI
                     : $"{Changes.Count} change(s).";
                 OnPropertyChanged(nameof(HasChanges));
 
-                // 2) Branch / ahead-behind info is best-effort: on a repository with a remote the
-                //    revision lookup can block, so it is time-bounded and never allowed to hang the
-                //    window or hide the change list. On timeout/failure the branch label is cleared.
-                LoreRepositoryInfo? info = await GetBranchInfoWithTimeoutAsync(client, root);
-
-                await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
-                UpdateBranchInfo(info);
+                UpdateBranchInfo(snapshot?.Info);
             });
         }
 
@@ -496,29 +490,29 @@ namespace LoreVS.UI
         }
 
         /// <summary>
-        /// Fetches branch / ahead-behind info off the UI thread, but gives up after a short timeout
-        /// so a revision lookup that blocks (for example contacting a remote) can never freeze the
-        /// window. Returns <see langword="null"/> on timeout or failure, which the caller renders as
-        /// an unknown branch rather than an error.
+        /// Fetches the repository snapshot (changed files + branch/ahead-behind summary) off the UI
+        /// thread, but gives up after a short timeout so a revision lookup that blocks (for example
+        /// contacting a remote) can never freeze the window. Returns an empty snapshot on timeout or
+        /// failure, which the caller renders as no changes and an unknown branch rather than an error.
         /// </summary>
-        private static async Task<LoreRepositoryInfo?> GetBranchInfoWithTimeoutAsync(ILoreClient client, string root)
+        private static async Task<LoreRepositorySnapshot> GetSnapshotWithTimeoutAsync(ILoreClient client, string root)
         {
             const int timeoutMs = 8000;
             try
             {
-                Task<LoreRepositoryInfo> work = Task.Run(() => client.GetRepositoryInfo(root));
+                Task<LoreRepositorySnapshot> work = Task.Run(() => client.GetRepositorySnapshot(root));
                 Task completed = await Task.WhenAny(work, Task.Delay(timeoutMs)).ConfigureAwait(false);
                 if (completed != work)
                 {
-                    return null;
+                    return new LoreRepositorySnapshot();
                 }
 
-                return await work.ConfigureAwait(false);
+                return await work.ConfigureAwait(false) ?? new LoreRepositorySnapshot();
             }
             catch (Exception ex)
             {
                 await ex.LogAsync();
-                return null;
+                return new LoreRepositorySnapshot();
             }
         }
 

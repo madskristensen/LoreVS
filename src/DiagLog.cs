@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
+using System.Threading;
 
 namespace LoreVS
 {
@@ -14,9 +16,9 @@ namespace LoreVS
     /// </summary>
     internal static class DiagLog
     {
-        private static readonly object _gate = new object();
         private static readonly int _pid = Process.GetCurrentProcess().Id;
         private static readonly string _path = ResolvePath();
+        private static readonly BlockingCollection<string> _queue = StartWriter();
 
         /// <summary>Absolute path of the log file, for surfacing to the user.</summary>
         public static string Path => _path;
@@ -37,7 +39,10 @@ namespace LoreVS
             }
         }
 
-        /// <summary>Appends a single timestamped, process-tagged line. Never throws.</summary>
+        /// <summary>
+        /// Queues a single timestamped, process-tagged line for the background writer. Non-blocking
+        /// so it is safe to call from UI-thread hot paths (such as glyph queries); never throws.
+        /// </summary>
         public static void Write(string message)
         {
             try
@@ -48,15 +53,41 @@ namespace LoreVS
                     message,
                     Environment.NewLine);
 
-                lock (_gate)
-                {
-                    File.AppendAllText(_path, line, Encoding.UTF8);
-                }
+                _queue.Add(line);
             }
             catch
             {
-                // Diagnostics must never affect package behavior.
+                // Diagnostics must never affect package behavior (e.g. queue completed on shutdown).
             }
+        }
+
+        /// <summary>
+        /// Starts the single background consumer that drains the queue and appends lines to disk, so
+        /// callers never pay file I/O. The thread is a background thread and exits with the process.
+        /// </summary>
+        private static BlockingCollection<string> StartWriter()
+        {
+            var queue = new BlockingCollection<string>();
+            var thread = new Thread(() =>
+            {
+                foreach (string line in queue.GetConsumingEnumerable())
+                {
+                    try
+                    {
+                        File.AppendAllText(_path, line, Encoding.UTF8);
+                    }
+                    catch
+                    {
+                        // Diagnostics must never affect package behavior.
+                    }
+                }
+            })
+            {
+                IsBackground = true,
+                Name = "LoreVS DiagLog",
+            };
+            thread.Start();
+            return queue;
         }
     }
 }
