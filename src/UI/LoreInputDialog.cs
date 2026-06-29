@@ -42,7 +42,9 @@ namespace LoreVS.UI
                 Margin = new Thickness(0, 0, 0, 12),
                 AcceptsReturn = multiline,
                 TextWrapping = multiline ? TextWrapping.Wrap : TextWrapping.NoWrap,
-                MinHeight = multiline ? 64 : 0,
+                MinHeight = multiline ? 64 : 26,
+                Padding = new Thickness(4, 4, 4, 4),
+                VerticalContentAlignment = multiline ? VerticalAlignment.Top : VerticalAlignment.Center,
                 VerticalScrollBarVisibility = multiline
                     ? ScrollBarVisibility.Auto
                     : ScrollBarVisibility.Hidden,
