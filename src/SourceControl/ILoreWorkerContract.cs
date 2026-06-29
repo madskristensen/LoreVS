@@ -44,6 +44,12 @@ namespace LoreVS.SourceControl
         /// <summary>Creates a repository on the server identified by <paramref name="repositoryUrl"/>.</summary>
         Task<LoreCommandResult> CreateRepositoryAsync(string workingDirectory, string repositoryUrl, string identity, CancellationToken cancellationToken);
 
+        /// <summary>
+        /// Clones the remote repository at <paramref name="repositoryUrl"/> into
+        /// <paramref name="targetDirectory"/>, materializing a working tree from the server.
+        /// </summary>
+        Task<LoreCommandResult> CloneRepositoryAsync(string repositoryUrl, string targetDirectory, string identity, CancellationToken cancellationToken);
+
         /// <summary>Stages every changed file under <paramref name="workingDirectory"/> (scan).</summary>
         Task<LoreCommandResult> StageAllAsync(string workingDirectory, CancellationToken cancellationToken);
 

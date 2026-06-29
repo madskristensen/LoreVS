@@ -35,6 +35,7 @@ namespace LoreVS
         public const int LoreChangesToolbarGroup = 0x0005;
         public const int AddToLoreCommand = 0x0101;
         public const int CommitToLoreCommand = 0x0102;
+        public const int CloneCommand = 0x0103;
         public const int IgnoreAndUntrackCommand = 0x010B;
         public const int UndoChangesCommand = 0x010C;
         public const int CompareUnmodifiedCommand = 0x010D;

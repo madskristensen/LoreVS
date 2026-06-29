@@ -67,7 +67,15 @@
           <LocCanonicalName>.LoreVS.AddToLoreSourceControl</LocCanonicalName>
         </Strings>
       </Button>
-      <Button guid="LoreVS" id="CommitToLoreCommand" priority="0x0110" type="Button">
+      <Button guid="LoreVS" id="CloneCommand" priority="0x0105" type="Button">
+        <Parent guid="LoreVS" id="MyMenuGroup" />
+        <Icon guid="ImageCatalogGuid" id="Download" />
+        <CommandFlag>IconIsMoniker</CommandFlag>
+        <Strings>
+          <ButtonText>Clone Lore Repository...</ButtonText>
+          <LocCanonicalName>.LoreVS.CloneLoreRepository</LocCanonicalName>
+        </Strings>
+      </Button>      <Button guid="LoreVS" id="CommitToLoreCommand" priority="0x0110" type="Button">
         <Parent guid="LoreVS" id="MyMenuGroup" />
         <Icon guid="ImageCatalogGuid" id="SaveAll" />
         <CommandFlag>IconIsMoniker</CommandFlag>
@@ -159,6 +167,7 @@
       <IDSymbol name="LoreChangesToolbar" value="0x0004" />
       <IDSymbol name="LoreChangesToolbarGroup" value="0x0005" />
       <IDSymbol name="AddToLoreCommand" value="0x0101" />
+      <IDSymbol name="CloneCommand" value="0x0103" />
       <IDSymbol name="CommitToLoreCommand" value="0x0102" />
       <IDSymbol name="LoreFileGroup" value="0x0006" />
       <IDSymbol name="LoreFileContextGroup" value="0x0007" />

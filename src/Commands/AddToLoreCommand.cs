@@ -1,7 +1,9 @@
 using System.IO;
 using System.Threading.Tasks;
 using LoreVS.Options;
+using LoreVS.Server;
 using LoreVS.SourceControl;
+using LoreVS.UI;
 using Microsoft.VisualStudio.Shell.Interop;
 
 namespace LoreVS.Commands
@@ -56,10 +58,25 @@ namespace LoreVS.Commands
             General options = await General.GetLiveInstanceAsync();
             string repoName = Path.GetFileName(solutionDir);
 
-            // Create the repository locally (offline, git-init style); the bare repo name is the
-            // offline repository URL. A remote can be configured later for push. This needs no
-            // server and writes the .lore folder into the solution directory.
+            // Ask where to create. A lore:// server URL creates the repo on that server and binds a
+            // remote; leaving it blank creates a fully offline repo (git-init style) with no remote.
+            string serverUrl = LoreInputDialog.Prompt("Add to Lore",
+                "Lore server URL to create the repository on (leave blank for an offline repository):",
+                LoreServerEndpoint.Default.ServerUrl) ?? string.Empty;
+
             string url = repoName;
+            if (LoreServerEndpoint.TryParse(serverUrl, out LoreServerEndpoint endpoint))
+            {
+                if (!await LoreServerHealth.IsReachableAsync(endpoint))
+                {
+                    await VS.MessageBox.ShowErrorAsync("Lore",
+                        $"No Lore server is reachable at {endpoint.ServerUrl}.\n\nStart a server (e.g. the demo " +
+                        "server on lore://127.0.0.1:41337), or leave the URL blank to create an offline repository.");
+                    return;
+                }
+
+                url = endpoint.RepositoryUrl(repoName);
+            }
 
             // Seed a .loreignore so Visual Studio's locked .vs folder, build output, and user
             // files are not staged/committed (otherwise the commit fails writing locked files).

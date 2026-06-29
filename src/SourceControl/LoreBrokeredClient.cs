@@ -263,6 +263,13 @@ namespace LoreVS.SourceControl
         }
 
         /// <inheritdoc/>
+        public LoreCommandResult CloneRepository(string repositoryUrl, string targetDirectory, string identity)
+        {
+            InvalidateCache();
+            return Invoke((proxy, ct) => proxy.CloneRepositoryAsync(repositoryUrl, targetDirectory, identity, ct));
+        }
+
+        /// <inheritdoc/>
         public LoreCommandResult StageAll(string workingDirectory)
         {
             InvalidateCache();

@@ -260,13 +260,31 @@ namespace LoreVS.Worker
                 return Task.FromResult(LoreCommandResult.Failed("A working directory and repository URL are required."));
             }
 
-            // Create the repository locally (offline), like "git init". RepositoryUrl is a bare
-            // name in offline mode; a remote can be attached later when pushing. This writes the
-            // .lore folder into the working directory with no server required.
-            return ExecuteAsync(identity, offline: true, workingDirectory, globalArgs =>
+            // A lore:// URL creates the repository on that server and binds the remote in
+            // .lore/config.toml; a bare name creates a fully offline repo (git-init style) with no
+            // remote. Either way the .lore working tree is laid down in the working directory.
+            bool offline = !repositoryUrl.StartsWith("lore://", StringComparison.OrdinalIgnoreCase);
+            return ExecuteAsync(identity, offline, workingDirectory, globalArgs =>
             {
                 using var args = new LoreRepositoryCreateArgs { RepositoryUrl = repositoryUrl };
                 Lore.RepositoryCreate(globalArgs, args).Wait();
+            });
+        }
+
+        /// <inheritdoc/>
+        public Task<LoreCommandResult> CloneRepositoryAsync(string repositoryUrl, string targetDirectory, string identity, CancellationToken cancellationToken)
+        {
+            if (string.IsNullOrWhiteSpace(repositoryUrl) || string.IsNullOrWhiteSpace(targetDirectory))
+            {
+                return Task.FromResult(LoreCommandResult.Failed("A repository URL and a target directory are required."));
+            }
+
+            // Clone is inherently online: it pulls the working tree and the .lore config (remote +
+            // identity) from the server into the target directory. RepositoryPath is the destination.
+            return ExecuteAsync(identity, offline: false, targetDirectory, globalArgs =>
+            {
+                using var args = new LoreRepositoryCloneArgs { RepositoryUrl = repositoryUrl };
+                Lore.RepositoryClone(globalArgs, args).Wait();
             });
         }
 

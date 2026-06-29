@@ -60,6 +60,12 @@ namespace LoreVS.SourceControl
         LoreCommandResult CreateRepository(string workingDirectory, string repositoryUrl, string identity);
 
         /// <summary>
+        /// Clones the remote repository at <paramref name="repositoryUrl"/> into
+        /// <paramref name="targetDirectory"/>, creating a working tree bound to that server.
+        /// </summary>
+        LoreCommandResult CloneRepository(string repositoryUrl, string targetDirectory, string identity);
+
+        /// <summary>
         /// Stages every modified/added/deleted file under <paramref name="workingDirectory"/>
         /// (equivalent to <c>lore stage --scan</c>).
         /// </summary>

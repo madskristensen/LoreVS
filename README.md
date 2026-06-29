@@ -20,10 +20,18 @@ commit - all without leaving the IDE or dropping to a terminal.
 ## Add a solution to Lore
 
 Right-click the solution node (or the Open Folder root) and choose
-**Lore > Add to Lore Source Control**. Lore creates a repository on the
-configured server, binds the loaded projects to the provider, and persists the
-binding in the solution file so it is restored automatically the next time you
-open the solution.
+**Lore > Add to Lore Source Control**. Enter a Lore server URL (e.g.
+`lore://127.0.0.1:41337`) to create the repository on that server and bind a
+remote so you can push, or leave it blank to create a fully offline repository.
+Lore binds the loaded projects to the provider; the `.lore` folder records the
+binding so it is restored automatically the next time you open the solution.
+
+## Clone an existing repository
+
+Right-click the solution node and choose **Lore > Clone Lore Repository...**.
+Paste a repository URL (e.g. `lore://127.0.0.1:41337/my-project`) and pick a
+local folder; Lore checks the server is reachable, clones the working tree, and
+records the remote in `.lore` so push and pull work immediately.
 
 ## See status at a glance
 
