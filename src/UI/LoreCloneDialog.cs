@@ -28,7 +28,7 @@ namespace LoreVS.UI
 
             ThemedDialogHelper.Apply(this);
 
-            var root = new Grid { Margin = new Thickness(12) };
+            var root = new Grid { Margin = new Thickness(14) };
             root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             root.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             for (int i = 0; i < 5; i++)
@@ -43,7 +43,7 @@ namespace LoreVS.UI
             Grid.SetColumnSpan(urlLabel, 2);
             root.Children.Add(urlLabel);
 
-            _urlBox = new TextBox { Padding = new Thickness(4, 4, 4, 4), MinHeight = 26, VerticalContentAlignment = System.Windows.VerticalAlignment.Center, Margin = new Thickness(0, 0, 0, 12) };
+            _urlBox = new TextBox { Padding = new Thickness(4, 4, 4, 4), MinHeight = 26, VerticalContentAlignment = System.Windows.VerticalAlignment.Center, Margin = new Thickness(0, 0, 0, 20) };
             Grid.SetRow(_urlBox, 1);
             Grid.SetColumnSpan(_urlBox, 2);
             root.Children.Add(_urlBox);
@@ -53,12 +53,12 @@ namespace LoreVS.UI
             Grid.SetColumnSpan(pathLabel, 2);
             root.Children.Add(pathLabel);
 
-            _pathBox = new TextBox { Text = initialPath ?? string.Empty, Padding = new Thickness(4, 4, 4, 4), MinHeight = 26, VerticalContentAlignment = System.Windows.VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 12) };
+            _pathBox = new TextBox { Text = initialPath ?? string.Empty, Padding = new Thickness(4, 4, 4, 4), MinHeight = 26, VerticalContentAlignment = System.Windows.VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 24) };
             Grid.SetRow(_pathBox, 3);
             Grid.SetColumn(_pathBox, 0);
             root.Children.Add(_pathBox);
 
-            var browse = new Button { Content = "...", MinWidth = 32, MinHeight = 26, Margin = new Thickness(0, 0, 0, 12) };
+            var browse = new Button { Content = "...", MinWidth = 32, MinHeight = 26, Margin = new Thickness(0, 0, 0, 24) };
             browse.Click += (s, e) => BrowseForPath();
             Grid.SetRow(browse, 3);
             Grid.SetColumn(browse, 1);
