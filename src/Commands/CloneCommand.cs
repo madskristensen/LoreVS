@@ -24,31 +24,31 @@ namespace LoreVS.Commands
                 return;
             }
 
-            string? repositoryUrl = LoreInputDialog.Prompt("Clone from Lore",
-                "Lore repository URL to clone (e.g. lore://127.0.0.1:41337/my-project):",
-                string.Empty);
+            string defaultPath = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "source", "repos");
+            var dialog = new LoreCloneDialog(defaultPath);
+            if (dialog.ShowModal() != true)
+            {
+                return;
+            }
+
+            string repositoryUrl = dialog.RepositoryUrl;
             if (string.IsNullOrWhiteSpace(repositoryUrl) ||
-                !LoreServerEndpoint.TryParse(repositoryUrl!, out LoreServerEndpoint endpoint))
+                !LoreServerEndpoint.TryParse(repositoryUrl, out LoreServerEndpoint endpoint))
             {
-                if (repositoryUrl != null)
-                {
-                    await VS.MessageBox.ShowErrorAsync("Lore", "Enter a valid lore:// repository URL.");
-                }
-
+                await VS.MessageBox.ShowErrorAsync("Lore", "Enter a valid lore:// repository URL.");
                 return;
             }
 
-            string trimmed = repositoryUrl!.TrimEnd('/');
+            if (string.IsNullOrWhiteSpace(dialog.DestinationPath))
+            {
+                await VS.MessageBox.ShowErrorAsync("Lore", "Choose a local path to clone into.");
+                return;
+            }
+
+            string trimmed = repositoryUrl.TrimEnd('/');
             string repoName = trimmed.Substring(trimmed.LastIndexOf('/') + 1);
-            string? parent = LoreInputDialog.Prompt("Clone from Lore",
-                "Local folder to clone into (the repository folder is created inside it):",
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "source", "repos"));
-            if (string.IsNullOrWhiteSpace(parent))
-            {
-                return;
-            }
-
-            string target = Path.Combine(parent!, repoName);
+            string target = Path.Combine(dialog.DestinationPath, repoName);
 
             ILoreClient client = package.Client;
             if (!await Task.Run(() => client.IsAvailable))
@@ -65,7 +65,7 @@ namespace LoreVS.Commands
 
             General options = await General.GetLiveInstanceAsync();
             await VS.StatusBar.ShowMessageAsync("Cloning Lore repository...");
-            LoreCommandResult result = await Task.Run(() => client.CloneRepository(repositoryUrl!, target, options.Identity));
+            LoreCommandResult result = await Task.Run(() => client.CloneRepository(repositoryUrl, target, options.Identity));
             await LoreLog.WriteCommandAsync($"clone {repositoryUrl}", result.CombinedText);
 
             if (!result.Success)
