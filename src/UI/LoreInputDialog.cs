@@ -24,12 +24,8 @@ namespace LoreVS.UI
             HasMaximizeButton = false;
             HasMinimizeButton = false;
 
-            // Apply the shared VS themed-dialog styles so the text box and buttons match the IDE
-            // theme instead of rendering as default white WPF controls, and paint the dialog body
-            // with the themed window background.
-            this.SetResourceReference(StyleProperty, VsResourceKeys.ThemedDialogDefaultStylesKey);
-            this.SetResourceReference(BackgroundProperty, EnvironmentColors.ToolWindowBackgroundBrushKey);
-            this.SetResourceReference(ForegroundProperty, EnvironmentColors.ToolWindowTextBrushKey);
+            // Match the IDE theme so the controls are not default white WPF controls.
+            ThemedDialogHelper.Apply(this);
 
             var root = new StackPanel { Margin = new Thickness(12) };
 

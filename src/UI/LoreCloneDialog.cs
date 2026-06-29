@@ -26,9 +26,7 @@ namespace LoreVS.UI
             HasMaximizeButton = false;
             HasMinimizeButton = false;
 
-            this.SetResourceReference(StyleProperty, VsResourceKeys.ThemedDialogDefaultStylesKey);
-            this.SetResourceReference(BackgroundProperty, EnvironmentColors.ToolWindowBackgroundBrushKey);
-            this.SetResourceReference(ForegroundProperty, EnvironmentColors.ToolWindowTextBrushKey);
+            ThemedDialogHelper.Apply(this);
 
             var root = new Grid { Margin = new Thickness(12) };
             root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
