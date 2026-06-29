@@ -51,9 +51,10 @@ namespace LoreVS.Commands
             General options = await General.GetLiveInstanceAsync();
             string repoName = Path.GetFileName(solutionDir);
 
-            // The target is the solution/folder the user invoked the command on, so there is
-            // nothing to ask: create the repository at the default URL on the configured server.
-            string url = LoreVSPackage.GetServerEndpoint(options).RepositoryUrl(repoName);
+            // Create the repository locally (offline, git-init style); the bare repo name is the
+            // offline repository URL. A remote can be configured later for push. This needs no
+            // server and writes the .lore folder into the solution directory.
+            string url = repoName;
 
             // Seed a .loreignore so Visual Studio's locked .vs folder, build output, and user
             // files are not staged/committed (otherwise the commit fails writing locked files).

@@ -1,4 +1,4 @@
-﻿global using Community.VisualStudio.Toolkit;
+global using Community.VisualStudio.Toolkit;
 
 global using Microsoft.VisualStudio.Shell;
 
@@ -40,30 +40,17 @@ namespace LoreVS
     [ProvideAutoLoad(LoreGuids.SccProviderString, PackageAutoLoadFlags.BackgroundLoad)]
     [ProvideAutoLoad(VSConstants.UICONTEXT.SolutionExists_string, PackageAutoLoadFlags.BackgroundLoad)]
     [ProvideAutoLoad(VSConstants.UICONTEXT.FolderOpened_string, PackageAutoLoadFlags.BackgroundLoad)]
-    // Persist the Lore binding in the solution file. When a controlled solution is reopened the
-    // shell sees this section, loads this package, and calls IVsPersistSolutionProps.ReadSolutionProps
-    // so we can re-activate Lore as the source control provider (the same way VS persists Git/TFS).
-    [ProvideSolutionProps(SolutionPersistenceKey)]
     // The Lore Changes tool window - a Git Changes-style panel for staging-free commit, diff,
     // and push/pull. Docked next to Solution Explorer by default.
     [ProvideToolWindow(typeof(UI.LoreChangesToolWindow.Pane), Style = VsDockStyle.Tabbed, Window = WindowGuids.SolutionExplorer)]
     [Guid(PackageGuids.LoreVSString)]
     public sealed partial class LoreVSPackage : ToolkitPackage
     {
-        /// <summary>Solution-file section name used to persist the Lore binding (max 31 chars, no dots).</summary>
-        internal const string SolutionPersistenceKey = "LoreSourceControl";
-        private const string PropControlled = "LoreControlled";
-        private const string PropRepositoryRoot = "LoreRepositoryRoot";
-
         private LoreSccService _sccService;
 
-        // Solution-persistence state. _controlledRoot is the Lore repository root bound to the
-        // currently open solution (null when not controlled); _solutionHasDirtyProps tracks whether
-        // the binding still needs to be written to the .sln; _pendingControlledRoot carries the root
-        // read from the .sln in ReadSolutionProps until the solution finishes opening and we bind it.
-        private bool _solutionHasDirtyProps;
+        // The Lore repository root bound to the currently open solution (null when not controlled).
+        // Discovered git-style by detecting a .lore folder; nothing is persisted to the .sln.
         private string _controlledRoot;
-        private string _pendingControlledRoot;
 
         /// <summary>The active Lore SCC provider service, available once the package has loaded.</summary>
         internal LoreSccService SccService => _sccService;
@@ -77,19 +64,17 @@ namespace LoreVS
 
         /// <summary>
         /// Makes Lore the active source control provider, binds the solution's loaded projects, and
-        /// persists the binding in the solution file so it is restored automatically on reopen.
+        /// relies on the .lore folder for restore on reopen (no .sln writes).
         /// Returns the number of projects bound. Called after a repository has been created.
         /// </summary>
         internal int OnboardAfterCreate(IVsSolution solution, string repositoryRoot)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
 
-            int bound = ActivateAndBind(solution, repositoryRoot);
-
-            // Record the binding and flush it to the .sln so reopening the solution reactivates Lore.
+            // No .sln persistence: the .lore folder on disk is the source of truth (git-style),
+            // so reopening the solution rediscovers it in ApplyControlledBinding.
             _controlledRoot = repositoryRoot;
-            PersistBinding(solution);
-            return bound;
+            return ActivateAndBind(solution, repositoryRoot);
         }
 
         /// <summary>
@@ -121,17 +106,6 @@ namespace LoreVS
             return bound;
         }
 
-        /// <summary>
-        /// Marks the Lore binding dirty and saves the solution so the persistence section is written
-        /// to the .sln (triggers QuerySaveSolutionProps -> SaveSolutionProps -> WriteSolutionProps).
-        /// </summary>
-        private void PersistBinding(IVsSolution solution)
-        {
-            ThreadHelper.ThrowIfNotOnUIThread();
-            _solutionHasDirtyProps = true;
-            solution?.SaveSolutionElement((uint)__VSSLNSAVEOPTIONS.SLNSAVEOPT_SaveIfDirty, null, 0);
-        }
-
         protected override async Task InitializeAsync(CancellationToken cancellationToken, IProgress<ServiceProgressData> progress)
         {
             await JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
@@ -161,7 +135,7 @@ namespace LoreVS
             this.RegisterToolWindows();
 
             // The package may have loaded after a solution was already opened
-            // the MRU on startup), in which case OnAfterOpenSolution/ReadSolutionProps already ran
+            // the MRU on startup), in which case OnAfterOpenSolution already ran
             // before we subscribed. Restore the Lore binding for any solution that is already open.
             // This is deferred until after InitializeAsync returns: activating the SCC provider
             // raises this package's autoload UI context, and doing that while the load is still in
@@ -202,10 +176,9 @@ namespace LoreVS
         }
 
         /// <summary>
-        /// Restores the Lore binding after a solution finishes opening. Prefers the binding read
-        /// from the solution file (<see cref="ReadSolutionProps"/>); falls back to detecting a
-        /// <c>.lore</c> repository on disk for solutions onboarded before solution-props persistence
-        /// existed, upgrading them to persisted bindings on the next save.
+        /// Restores the Lore binding after a solution finishes opening by detecting a <c>.lore</c>
+        /// repository at the solution root (git-style). Nothing is persisted to the .sln; the
+        /// presence of the repository folder alone determines whether Lore is the active provider.
         /// </summary>
         private void OnAfterOpenSolution(object sender, Microsoft.VisualStudio.Shell.Events.OpenSolutionEventArgs e)
         {
@@ -219,8 +192,6 @@ namespace LoreVS
         {
             ThreadHelper.ThrowIfNotOnUIThread();
             _controlledRoot = null;
-            _pendingControlledRoot = null;
-            _solutionHasDirtyProps = false;
         }
 
         /// <summary>
@@ -238,27 +209,11 @@ namespace LoreVS
                 return;
             }
 
-            // Binding read from the .sln takes precedence.
-            if (!string.IsNullOrEmpty(_pendingControlledRoot))
-            {
-                _controlledRoot = _pendingControlledRoot;
-            }
-
-            _pendingControlledRoot = null;
-
-            if (!string.IsNullOrEmpty(_controlledRoot))
-            {
-                DiagLog.Write($"[bind] using persisted/controlled root '{_controlledRoot}' -> ActivateAndBind");
-                ActivateAndBind(solution, _controlledRoot);
-                return;
-            }
-
-            // Fallback for repositories onboarded before solution-props persistence existed: detect
-            // the .lore marker and persist the binding on the next save so future opens are native.
             string solutionDir = SolutionScc.GetSolutionDirectory(solution);
             if (string.IsNullOrEmpty(solutionDir))
             {
                 DiagLog.Write("[bind] no solution directory; nothing to bind");
+                _controlledRoot = null;
                 return;
             }
 
@@ -267,12 +222,12 @@ namespace LoreVS
             if (detected != null)
             {
                 _controlledRoot = detected;
-                _solutionHasDirtyProps = true;
                 ActivateAndBind(solution, detected);
             }
             else
             {
                 DiagLog.Write("[bind] no .lore root detected -> RefreshAllGlyphs only (provider NOT activated)");
+                _controlledRoot = null;
                 _sccService.RefreshAllGlyphs();
             }
         }

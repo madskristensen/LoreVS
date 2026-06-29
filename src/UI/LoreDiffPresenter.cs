@@ -77,10 +77,13 @@ namespace LoreVS.UI
                 Path.GetTempPath(),
                 "lore-" + Guid.NewGuid().ToString("N") + "-" + item.FileName);
 
-            // Lore stores repository-relative paths with forward slashes.
-            string lorePath = item.RelativePath.Replace('\\', '/');
+            // Materialize the committed base at the local tip revision: an empty revision resolves
+            // to the working copy (identical to the file on disk), which would show no differences.
+            LoreRepositoryInfo info = client.GetRepositoryInfo(repositoryRoot);
+            string revision = info?.LocalRevisionHash ?? string.Empty;
 
-            LoreCommandResult result = client.WriteFileAtRevision(repositoryRoot, lorePath, string.Empty, tempPath);
+            // Pass the absolute working path; the SDK resolves the in-repo file from it.
+            LoreCommandResult result = client.WriteFileAtRevision(repositoryRoot, item.FullPath, revision, tempPath);
             if (result.Success && File.Exists(tempPath))
             {
                 return tempPath;

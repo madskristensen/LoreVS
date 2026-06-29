@@ -100,6 +100,9 @@ namespace LoreVS.SourceControl
 
         /// <summary>Remote revision number (the server branch tip), when known.</summary>
         public long RemoteRevisionNumber { get; set; }
+
+        /// <summary>Hex hash of the local branch tip revision; the committed base for diffs.</summary>
+        public string LocalRevisionHash { get; set; } = string.Empty;
     }
 
     /// <summary>

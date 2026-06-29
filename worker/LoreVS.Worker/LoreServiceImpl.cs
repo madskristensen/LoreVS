@@ -161,11 +161,19 @@ namespace LoreVS.Worker
                         if (loreEvent.Tag == LoreEventTag.REPOSITORY_STATUS_FILE)
                         {
                             LoreRepositoryStatusFileEventDataFFI file = loreEvent.GetData<LoreRepositoryStatusFileEventDataFFI>();
-                            entries.Add(new LoreStatusEntry
+                            string normalized = NormalizePath(repositoryRoot, file.Path);
+
+                            // The scan can surface a directory entry (e.g. the project folder); those
+                            // are not changed files and would render as a phantom leaf in the Changes
+                            // tree, so skip anything that resolves to an existing directory.
+                            if (!Directory.Exists(normalized))
                             {
-                                Path = NormalizePath(repositoryRoot, file.Path),
-                                Status = LoreStatusMapper.Map(file),
-                            });
+                                entries.Add(new LoreStatusEntry
+                                {
+                                    Path = normalized,
+                                    Status = LoreStatusMapper.Map(file),
+                                });
+                            }
                         }
                         else if (loreEvent.Tag == LoreEventTag.REPOSITORY_STATUS_REVISION)
                         {
@@ -176,6 +184,7 @@ namespace LoreVS.Worker
                             info.IsRemoteAhead = rev.IsRemoteAhead;
                             info.LocalRevisionNumber = (long)rev.RevisionLocalNumber;
                             info.RemoteRevisionNumber = (long)rev.RevisionRemoteNumber;
+                            info.LocalRevisionHash = HashToHex(rev.RevisionLocal);
                             sawRevision = true;
                         }
                     }
@@ -231,6 +240,7 @@ namespace LoreVS.Worker
                         info.IsRemoteAhead = rev.IsRemoteAhead;
                         info.LocalRevisionNumber = (long)rev.RevisionLocalNumber;
                         info.RemoteRevisionNumber = (long)rev.RevisionRemoteNumber;
+                        info.LocalRevisionHash = HashToHex(rev.RevisionLocal);
                     }
                     catch (Exception ex)
                     {
@@ -250,7 +260,10 @@ namespace LoreVS.Worker
                 return Task.FromResult(LoreCommandResult.Failed("A working directory and repository URL are required."));
             }
 
-            return ExecuteAsync(identity, offline: false, workingDirectory, globalArgs =>
+            // Create the repository locally (offline), like "git init". RepositoryUrl is a bare
+            // name in offline mode; a remote can be attached later when pushing. This writes the
+            // .lore folder into the working directory with no server required.
+            return ExecuteAsync(identity, offline: true, workingDirectory, globalArgs =>
             {
                 using var args = new LoreRepositoryCreateArgs { RepositoryUrl = repositoryUrl };
                 Lore.RepositoryCreate(globalArgs, args).Wait();
@@ -389,6 +402,13 @@ namespace LoreVS.Worker
             {
                 globalArgs.Dispose();
             }
+        }
+
+        /// <summary>Converts a Lore revision hash to the lowercase hex string the SDK expects.</summary>
+        private static string HashToHex(LoreHash hash)
+        {
+            byte[] data = hash.Data;
+            return data == null || data.Length == 0 ? string.Empty : BitConverter.ToString(data).Replace("-", "").ToLowerInvariant();
         }
 
         /// <summary>Unwraps the inner exception from the SDK's blocking call, if present.</summary>
