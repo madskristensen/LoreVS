@@ -46,11 +46,11 @@ namespace LoreVS
     [Guid(PackageGuids.LoreVSString)]
     public sealed partial class LoreVSPackage : ToolkitPackage
     {
-        private LoreSccService _sccService;
+        private LoreSccService _sccService = null!;
 
         // The Lore repository root bound to the currently open solution (null when not controlled).
         // Discovered git-style by detecting a .lore folder; nothing is persisted to the .sln.
-        private string _controlledRoot;
+        private string? _controlledRoot;
 
         /// <summary>The active Lore SCC provider service, available once the package has loaded.</summary>
         internal LoreSccService SccService => _sccService;
@@ -203,7 +203,7 @@ namespace LoreVS
                 return;
             }
 
-            string solutionDir = SolutionScc.GetSolutionDirectory(solution);
+            string? solutionDir = SolutionScc.GetSolutionDirectory(solution);
             if (string.IsNullOrEmpty(solutionDir))
             {
                 DiagLog.Write("[bind] no solution directory; nothing to bind");
@@ -211,7 +211,7 @@ namespace LoreVS
                 return;
             }
 
-            string detected = Client.FindRepositoryRoot(solutionDir);
+            string? detected = Client.FindRepositoryRoot(solutionDir!);
             DiagLog.Write($"[bind] solutionDir='{solutionDir}' detectedRoot='{detected ?? "<null>"}'");
             if (detected != null)
             {

@@ -8,7 +8,7 @@ namespace LoreVS
     /// </summary>
     internal static class LoreLog
     {
-        private static OutputWindowPane _pane;
+        private static OutputWindowPane? _pane;
 
         public static async Task WriteLineAsync(string text)
         {

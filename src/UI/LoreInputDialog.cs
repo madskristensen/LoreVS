@@ -77,7 +77,7 @@ namespace LoreVS.UI
         /// Shows the dialog modally and returns the entered text, or <see langword="null"/>
         /// if the user cancelled or left the box empty.
         /// </summary>
-        public static string Prompt(string title, string prompt, string initialValue, bool multiline = false)
+        public static string? Prompt(string title, string prompt, string initialValue, bool multiline = false)
         {
             var dialog = new LoreInputDialog(title, prompt, initialValue, multiline);
             bool? result = dialog.ShowModal();

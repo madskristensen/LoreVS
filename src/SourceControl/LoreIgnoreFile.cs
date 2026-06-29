@@ -59,7 +59,7 @@ namespace LoreVS.SourceControl
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[LoreVS] Failed to write .loreignore: {ex.Message}");
+                ex.LogAsync().FireAndForget();
                 return false;
             }
         }

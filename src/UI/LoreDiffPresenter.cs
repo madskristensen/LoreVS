@@ -14,6 +14,7 @@ namespace LoreVS.UI
     /// </summary>
     internal static class LoreDiffPresenter
     {
+        private const string TempPrefix = "lore-";
         /// <summary>
         /// Shows a diff for <paramref name="item"/>. Added files open directly (no base), deleted
         /// files show their last committed content, and everything else is shown as base vs working.
@@ -25,6 +26,8 @@ namespace LoreVS.UI
                 return;
             }
 
+            SweepStaleBaseFiles();
+
             try
             {
                 if (item.Status == LoreFileStatus.Added)
@@ -33,7 +36,7 @@ namespace LoreVS.UI
                     return;
                 }
 
-                string basePath = await Task.Run(() => MaterializeBase(client, repositoryRoot, item));
+                string? basePath = await Task.Run(() => MaterializeBase(client, repositoryRoot, item));
 
                 if (basePath == null)
                 {
@@ -71,15 +74,39 @@ namespace LoreVS.UI
         /// Writes the committed version of <paramref name="item"/> to a temp file and returns its
         /// path, or <see langword="null"/> when the base could not be produced.
         /// </summary>
-        private static string MaterializeBase(ILoreClient client, string repositoryRoot, LoreChangeItem item)
+        // Temp files created for diffing accumulate because the IDE owns the diff window lifetime;
+        // best-effort sweep prior diffs older than a day so the temp folder does not grow unbounded.
+        private static void SweepStaleBaseFiles()
+        {
+            try
+            {
+                foreach (string file in Directory.EnumerateFiles(Path.GetTempPath(), TempPrefix + "*"))
+                {
+                    try
+                    {
+                        if (File.GetLastWriteTimeUtc(file) < DateTime.UtcNow.AddDays(-1))
+                        {
+                            File.Delete(file);
+                        }
+                    }
+                    catch { /* a file still open in a diff window stays; swept next time */ }
+                }
+            }
+            catch (Exception ex)
+            {
+                ex.LogAsync().FireAndForget();
+            }
+        }
+
+        private static string? MaterializeBase(ILoreClient client, string repositoryRoot, LoreChangeItem item)
         {
             string tempPath = Path.Combine(
                 Path.GetTempPath(),
-                "lore-" + Guid.NewGuid().ToString("N") + "-" + item.FileName);
+                TempPrefix + Guid.NewGuid().ToString("N") + "-" + item.FileName);
 
             // Materialize the committed base at the local tip revision: an empty revision resolves
             // to the working copy (identical to the file on disk), which would show no differences.
-            LoreRepositoryInfo info = client.GetRepositoryInfo(repositoryRoot);
+            LoreRepositoryInfo? info = client.GetRepositoryInfo(repositoryRoot);
             string revision = info?.LocalRevisionHash ?? string.Empty;
 
             // Pass the absolute working path; the SDK resolves the in-repo file from it.
@@ -97,12 +124,12 @@ namespace LoreVS.UI
         private static string Quote(string value) =>
             "\"" + (value ?? string.Empty).Replace("\"", "\\\"") + "\"";
 
-        private static async Task OpenDocumentAsync(string path)
+        private static async Task OpenDocumentAsync(string? path)
         {
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
             if (!string.IsNullOrEmpty(path) && File.Exists(path))
             {
-                await VS.Documents.OpenAsync(path);
+                await VS.Documents.OpenAsync(path!);
             }
         }
     }

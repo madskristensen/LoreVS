@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
@@ -30,9 +31,11 @@ namespace LoreVS.SourceControl
 
         private bool _active;
 
-        // 0 = idle, 1 = a background status warm-up is in flight. Prevents a warm-up storm when
-        // Visual Studio asks for glyphs for many files at once.
-        private int _warmingStatus;
+        // Repository roots with a background status warm-up in flight, keyed by root. Prevents a
+        // warm-up storm when Visual Studio asks for glyphs for many files at once, while still
+        // letting distinct repositories warm concurrently.
+        private readonly ConcurrentDictionary<string, byte> _warmingRoots =
+            new ConcurrentDictionary<string, byte>(StringComparer.OrdinalIgnoreCase);
 
         public LoreSccService(LoreVSPackage package, ILoreClient client)
         {
@@ -67,7 +70,7 @@ namespace LoreVS.SourceControl
                 }
                 catch (Exception ex)
                 {
-                    Debug.WriteLine($"[LoreVS] SetSccLocation failed: {ex.Message}");
+                    ex.LogAsync().FireAndForget();
                 }
             }
 
@@ -80,6 +83,7 @@ namespace LoreVS.SourceControl
 
         public int SetActive()
         {
+            ThreadHelper.ThrowIfNotOnUIThread();
             _active = true;
             DiagLog.Write("[scc] SetActive - Lore is now the active provider");
             LoreLog.WriteLineAsync("[scc] SetActive - Lore is now the active source control provider.").FileAndForget("LoreVS/Scc");
@@ -89,6 +93,7 @@ namespace LoreVS.SourceControl
 
         public int SetInactive()
         {
+            ThreadHelper.ThrowIfNotOnUIThread();
             _active = false;
             DiagLog.Write("[scc] SetInactive - Lore is no longer the active provider");
             LoreLog.WriteLineAsync("[scc] SetInactive - Lore is no longer the active source control provider.").FileAndForget("LoreVS/Scc");
@@ -190,7 +195,7 @@ namespace LoreVS.SourceControl
         public int BrowseForProject(out string pbstrDirectoryName, out int pfOK)
         {
             // Browsing for a server-side project is not supported in the read-only MVP.
-            pbstrDirectoryName = null;
+            pbstrDirectoryName = string.Empty;
             pfOK = 0;
             return VSConstants.E_NOTIMPL;
         }
@@ -263,10 +268,13 @@ namespace LoreVS.SourceControl
                 return cached;
             }
 
-            if (Interlocked.CompareExchange(ref _warmingStatus, 1, 0) == 0)
+            // Warm the cache once per repository root rather than once globally, so glyph queries
+            // for files in another repository are not starved while one root is being scanned.
+            string? root = _client.FindRepositoryRoot(path);
+            if (root != null && _warmingRoots.TryAdd(root, 0))
             {
-                DiagLog.Write($"[scc] GetStatusForGlyph cache miss for '{path}' -> warming");
-                WarmStatusAsync(path).FileAndForget("LoreVS/WarmGlyph");
+                DiagLog.Write($"[scc] GetStatusForGlyph cache miss for '{path}' -> warming '{root}'");
+                WarmStatusAsync(path, root).FileAndForget("LoreVS/WarmGlyph");
             }
 
             return LoreFileStatus.Unchanged;
@@ -276,7 +284,7 @@ namespace LoreVS.SourceControl
         /// Fetches status on a background thread (populating the client cache), then repaints glyphs
         /// on the UI thread. Keeps the UI thread free while the worker is contacted.
         /// </summary>
-        private async Task WarmStatusAsync(string path)
+        private async Task WarmStatusAsync(string path, string root)
         {
             LoreFileStatus result = LoreFileStatus.NotControlled;
             try
@@ -290,7 +298,7 @@ namespace LoreVS.SourceControl
             }
             finally
             {
-                Interlocked.Exchange(ref _warmingStatus, 0);
+                _warmingRoots.TryRemove(root, out _);
             }
 
             DiagLog.Write($"[scc] WarmStatusAsync got {result} for '{path}' -> repaint");

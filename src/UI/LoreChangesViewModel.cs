@@ -23,9 +23,9 @@ namespace LoreVS.UI
     /// </summary>
     public sealed class LoreChangesViewModel : INotifyPropertyChanged
     {
-        private ILoreClient _client;
-        private LoreSccService _sccService;
-        private string _repositoryRoot;
+        private ILoreClient? _client;
+        private LoreSccService? _sccService;
+        private string? _repositoryRoot;
         private string _identity = string.Empty;
         private bool _autoPushOnCommit;
 
@@ -38,7 +38,7 @@ namespace LoreVS.UI
         private bool _isBusy;
         private string _statusText = string.Empty;
         private List<LoreTreeNode> _treeRoots = new List<LoreTreeNode>();
-        private IVsImageService2 _imageService;
+        private IVsImageService2? _imageService;
         private readonly Dictionary<string, ImageMoniker> _fileIconCache =
             new Dictionary<string, ImageMoniker>(StringComparer.OrdinalIgnoreCase);
 
@@ -48,7 +48,7 @@ namespace LoreVS.UI
             Nodes = new ObservableCollection<LoreTreeNode>();
         }
 
-        public event PropertyChangedEventHandler PropertyChanged;
+        public event PropertyChangedEventHandler? PropertyChanged;
 
         /// <summary>The changed files currently displayed.</summary>
         public ObservableCollection<LoreChangeItem> Changes { get; }
@@ -112,10 +112,10 @@ namespace LoreVS.UI
         public bool CanInteract => HasRepository && !IsBusy;
 
         /// <summary>The repository root bound to this window, or null.</summary>
-        public string RepositoryRoot => _repositoryRoot;
+        public string? RepositoryRoot => _repositoryRoot;
 
         /// <summary>The Lore client backing this window, or null when unavailable.</summary>
-        internal ILoreClient Client => _client;
+        internal ILoreClient? Client => _client;
 
         /// <summary>
         /// Resolves the Lore client and options once, subscribes to solution and folder open/close
@@ -164,8 +164,8 @@ namespace LoreVS.UI
         {
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
 
-            string solutionDir = await ResolveSolutionDirectoryAsync();
-            ILoreClient client = _client;
+            string? solutionDir = await ResolveSolutionDirectoryAsync();
+            ILoreClient client = _client!;
             _repositoryRoot = client != null && solutionDir != null
                 ? await Task.Run(() => client.FindRepositoryRoot(solutionDir))
                 : null;
@@ -213,8 +213,8 @@ namespace LoreVS.UI
 
             await RunAsync("Refreshing Lore status...", async () =>
             {
-                string root = _repositoryRoot;
-                ILoreClient client = _client;
+                string root = _repositoryRoot!;
+                ILoreClient client = _client!;
 
                 // Fetch the change list AND branch/ahead-behind summary from a SINGLE status pass.
                 // The native SDK does not reliably tolerate two back-to-back status scans, so the
@@ -337,8 +337,8 @@ namespace LoreVS.UI
             bool amend = Amend;
             await RunAsync(amend ? "Amending..." : "Committing...", async () =>
             {
-                string root = _repositoryRoot;
-                ILoreClient client = _client;
+                string root = _repositoryRoot!;
+                ILoreClient client = _client!;
                 string identity = _identity;
 
                 LoreCommandResult result = await Task.Run(() =>
@@ -402,8 +402,8 @@ namespace LoreVS.UI
 
             await RunAsync("Pulling...", async () =>
             {
-                string root = _repositoryRoot;
-                ILoreClient client = _client;
+                string root = _repositoryRoot!;
+                ILoreClient client = _client!;
                 LoreCommandResult result = await Task.Run(() => client.Sync(root));
                 await LoreLog.WriteCommandAsync("sync", result.CombinedText);
 
@@ -438,8 +438,8 @@ namespace LoreVS.UI
 
             await RunAsync("Discarding changes...", async () =>
             {
-                string root = _repositoryRoot;
-                ILoreClient client = _client;
+                string root = _repositoryRoot!;
+                ILoreClient client = _client!;
                 string[] paths = items.Select(i => i.FullPath).ToArray();
 
                 LoreCommandResult result = await Task.Run(() => client.ResetFiles(root, paths));
@@ -458,12 +458,12 @@ namespace LoreVS.UI
 
         /// <summary>Opens the diff for a changed file.</summary>
         public Task ShowDiffAsync(LoreChangeItem item) =>
-            LoreDiffPresenter.ShowAsync(_client, _repositoryRoot, item);
+            LoreDiffPresenter.ShowAsync(_client!, _repositoryRoot!, item);
 
         private async Task PushCoreAsync()
         {
-            string root = _repositoryRoot;
-            ILoreClient client = _client;
+            string root = _repositoryRoot!;
+            ILoreClient client = _client!;
             LoreCommandResult result = await Task.Run(() => client.Push(root));
             await LoreLog.WriteCommandAsync("push", result.CombinedText);
 
@@ -476,7 +476,7 @@ namespace LoreVS.UI
 
         private async Task<bool> EnsureAvailableAsync()
         {
-            ILoreClient client = _client;
+            ILoreClient client = _client!;
             bool available = client != null && await Task.Run(() => client.IsAvailable);
             if (!available)
             {
@@ -563,7 +563,7 @@ namespace LoreVS.UI
             }
         }
 
-        private static async Task<string> ResolveSolutionDirectoryAsync()
+        private static async Task<string?> ResolveSolutionDirectoryAsync()
         {
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
             IVsSolution solution = await VS.Services.GetSolutionAsync();
@@ -584,7 +584,7 @@ namespace LoreVS.UI
             }
         }
 
-        private bool SetProperty<T>(ref T field, T value, [CallerMemberName] string propertyName = null)
+        private bool SetProperty<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
         {
             if (EqualityComparer<T>.Default.Equals(field, value))
             {
@@ -596,7 +596,7 @@ namespace LoreVS.UI
             return true;
         }
 
-        private void OnPropertyChanged([CallerMemberName] string propertyName = null) =>
+        private void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
 }

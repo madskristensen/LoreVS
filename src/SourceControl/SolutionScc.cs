@@ -19,7 +19,7 @@ namespace LoreVS.SourceControl
         /// Returns the directory of the open solution, or the root folder in Open Folder
         /// mode. Returns <see langword="null"/> when nothing is open.
         /// </summary>
-        public static string GetSolutionDirectory(IVsSolution solution)
+        public static string? GetSolutionDirectory(IVsSolution solution)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
             if (solution == null)
@@ -78,7 +78,7 @@ namespace LoreVS.SourceControl
         /// Returns the directory that contains the project backed by <paramref name="hierarchy"/>,
         /// falling back to <paramref name="fallback"/> when it cannot be determined.
         /// </summary>
-        public static string GetProjectDirectory(IVsHierarchy hierarchy, string fallback)
+        public static string GetProjectDirectory(IVsHierarchy? hierarchy, string fallback)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
             try
@@ -96,7 +96,7 @@ namespace LoreVS.SourceControl
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[LoreVS] GetProjectDirectory failed: {ex.Message}");
+                ex.LogAsync().FireAndForget();
             }
 
             return fallback;

@@ -11,7 +11,7 @@ namespace LoreVS.Commands
     {
         protected override async Task ExecuteAsync(OleMenuCmdEventArgs e)
         {
-            LoreChangesViewModel viewModel = LoreChangesControl.Current?.ViewModel;
+            LoreChangesViewModel? viewModel = LoreChangesControl.Current?.ViewModel;
             if (viewModel != null)
             {
                 await viewModel.PullAsync();

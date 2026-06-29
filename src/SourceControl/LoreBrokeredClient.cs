@@ -35,14 +35,14 @@ namespace LoreVS.SourceControl
         private const int ConnectTimeoutMs = 15000;
 
         private readonly object _gate = new object();
-        private readonly string _workerPath;
+        private readonly string? _workerPath;
         private readonly ConcurrentDictionary<string, CacheEntry> _cache =
             new ConcurrentDictionary<string, CacheEntry>(StringComparer.OrdinalIgnoreCase);
 
-        private Process _workerProcess;
-        private NamedPipeClientStream _pipe;
-        private JsonRpc _rpc;
-        private ILoreWorkerContract _proxy;
+        private Process? _workerProcess;
+        private NamedPipeClientStream? _pipe;
+        private JsonRpc? _rpc;
+        private ILoreWorkerContract? _proxy;
         private bool _workerUnavailable;
         private bool _disposed;
 
@@ -51,7 +51,7 @@ namespace LoreVS.SourceControl
         /// worker location (next to this assembly under <c>Worker\LoreVS.Worker.exe</c>); it is used
         /// by tests to point at a freshly built worker.
         /// </summary>
-        public LoreBrokeredClient(string workerExecutablePath = null)
+        public LoreBrokeredClient(string? workerExecutablePath = null)
         {
             _workerPath = string.IsNullOrWhiteSpace(workerExecutablePath)
                 ? DefaultWorkerPath()
@@ -63,7 +63,7 @@ namespace LoreVS.SourceControl
         {
             get
             {
-                ILoreWorkerContract proxy = GetProxy();
+                ILoreWorkerContract? proxy = GetProxy();
                 if (proxy == null)
                 {
                     return false;
@@ -82,7 +82,7 @@ namespace LoreVS.SourceControl
         }
 
         /// <inheritdoc/>
-        public string FindRepositoryRoot(string path) => LoreRepositoryLocator.FindRoot(path);
+        public string? FindRepositoryRoot(string path) => LoreRepositoryLocator.FindRoot(path);
 
         /// <inheritdoc/>
         public LoreFileStatus GetStatus(string filePath)
@@ -92,7 +92,7 @@ namespace LoreVS.SourceControl
                 return LoreFileStatus.NotControlled;
             }
 
-            string root = FindRepositoryRoot(filePath);
+            string? root = FindRepositoryRoot(filePath);
             if (root == null)
             {
                 return LoreFileStatus.NotControlled;
@@ -120,7 +120,7 @@ namespace LoreVS.SourceControl
                 return true;
             }
 
-            string root = FindRepositoryRoot(filePath);
+            string? root = FindRepositoryRoot(filePath);
             if (root == null)
             {
                 return true;
@@ -159,7 +159,7 @@ namespace LoreVS.SourceControl
         }
 
         private IReadOnlyDictionary<string, LoreFileStatus> QueryStatus(string repositoryRoot)        {
-            ILoreWorkerContract proxy = GetProxy();
+            ILoreWorkerContract? proxy = GetProxy();
             if (proxy == null)
             {
                 return EmptyStatus();
@@ -197,7 +197,7 @@ namespace LoreVS.SourceControl
                 return new LoreRepositoryInfo();
             }
 
-            ILoreWorkerContract proxy = GetProxy();
+            ILoreWorkerContract? proxy = GetProxy();
             if (proxy == null)
             {
                 return new LoreRepositoryInfo();
@@ -222,7 +222,7 @@ namespace LoreVS.SourceControl
                 return new LoreRepositorySnapshot();
             }
 
-            ILoreWorkerContract proxy = GetProxy();
+            ILoreWorkerContract? proxy = GetProxy();
             if (proxy == null)
             {
                 return new LoreRepositorySnapshot();
@@ -320,7 +320,7 @@ namespace LoreVS.SourceControl
         private LoreCommandResult Invoke(
             Func<ILoreWorkerContract, CancellationToken, Task<LoreCommandResult>> operation)
         {
-            ILoreWorkerContract proxy = GetProxy();
+            ILoreWorkerContract? proxy = GetProxy();
             if (proxy == null)
             {
                 return WorkerUnavailable();
@@ -343,7 +343,7 @@ namespace LoreVS.SourceControl
                 "is deployed, then try again.");
 
         /// <summary>Lazily launches the worker and returns its JSON-RPC proxy, or null on failure.</summary>
-        private ILoreWorkerContract GetProxy()
+        private ILoreWorkerContract? GetProxy()
         {
             if (_workerUnavailable || _disposed)
             {
@@ -396,7 +396,7 @@ namespace LoreVS.SourceControl
 
             var psi = new ProcessStartInfo
             {
-                FileName = _workerPath,
+                FileName = _workerPath!,
                 Arguments = "\"" + pipeName + "\"",
                 UseShellExecute = false,
                 CreateNoWindow = true,
@@ -466,7 +466,7 @@ namespace LoreVS.SourceControl
                 return true;
             }
 
-            Process worker = _workerProcess;
+            Process? worker = _workerProcess;
             return worker == null || worker.HasExited;
         }
 
@@ -513,14 +513,16 @@ namespace LoreVS.SourceControl
         /// </summary>
         private static T Run<T>(Func<CancellationToken, Task<T>> operation)
         {
+            #pragma warning disable VSTHRD002 // callers always invoke off the UI thread, and Task.Run detaches from any captured context
             return Task.Run(() => operation(CancellationToken.None)).GetAwaiter().GetResult();
+#pragma warning restore VSTHRD002
         }
 
         private static string DefaultWorkerPath()
         {
             try
             {
-                string baseDir = Path.GetDirectoryName(typeof(LoreBrokeredClient).Assembly.Location);
+                string? baseDir = Path.GetDirectoryName(typeof(LoreBrokeredClient).Assembly.Location);
                 return Path.Combine(baseDir ?? string.Empty, "Worker", "LoreVS.Worker.exe");
             }
             catch

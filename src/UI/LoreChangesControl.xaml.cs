@@ -17,7 +17,7 @@ namespace LoreVS.UI
     public partial class LoreChangesControl : UserControl
     {
         /// <summary>The control currently hosted in the tool window, used by the toolbar commands.</summary>
-        internal static LoreChangesControl Current { get; private set; }
+        internal static LoreChangesControl? Current { get; private set; }
 
         private bool _initialized;
 
@@ -132,7 +132,7 @@ namespace LoreVS.UI
             IReadOnlyList<LoreChangeItem> items = ChangesList.SelectedItems
                 .Cast<LoreTreeNode>()
                 .Where(n => n.File != null)
-                .Select(n => n.File)
+                .Select(n => n.File!)
                 .ToList();
             if (items.Count > 0)
             {

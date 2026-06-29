@@ -23,7 +23,7 @@ namespace LoreVS.SourceControl
         /// Returns the root of the Lore repository that contains <paramref name="path"/>,
         /// walking up the directory tree, or <see langword="null"/> if none is found.
         /// </summary>
-        string FindRepositoryRoot(string path);
+        string? FindRepositoryRoot(string path);
 
         /// <summary>
         /// Returns the source control status of a single file. Implementations should
@@ -51,7 +51,7 @@ namespace LoreVS.SourceControl
         /// the branch is ahead/behind its remote) for the repository at <paramref name="repositoryRoot"/>,
         /// or <see langword="null"/> when it cannot be determined.
         /// </summary>
-        LoreRepositoryInfo GetRepositoryInfo(string repositoryRoot);
+        LoreRepositoryInfo? GetRepositoryInfo(string repositoryRoot);
         /// <summary>
         /// Onboards <paramref name="workingDirectory"/> to Lore by creating a repository on
         /// the server identified by <paramref name="repositoryUrl"/>. The existing files in

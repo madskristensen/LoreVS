@@ -27,7 +27,7 @@ namespace LoreVS.UI
             IsFolder = isFolder;
         }
 
-        public event PropertyChangedEventHandler PropertyChanged;
+        public event PropertyChangedEventHandler? PropertyChanged;
 
         /// <summary>Display name: the folder segment, or the file name for a leaf.</summary>
         public string Name { get; }
@@ -36,7 +36,7 @@ namespace LoreVS.UI
         public bool IsFolder { get; }
 
         /// <summary>The changed file behind a leaf node; null for folders.</summary>
-        public LoreChangeItem File { get; set; }
+        public LoreChangeItem? File { get; set; }
 
         /// <summary>Child nodes (folders first, then files); empty for leaves.</summary>
         public List<LoreTreeNode> Children { get; } = new List<LoreTreeNode>();
@@ -96,10 +96,10 @@ namespace LoreVS.UI
         public string StatusText => File?.StatusText ?? string.Empty;
 
         /// <summary>Absolute path for a file leaf; null for folders.</summary>
-        public string FullPath => File?.FullPath;
+        public string? FullPath => File?.FullPath;
 
         /// <summary>Row tooltip: the relative path for files, the folder name for folders.</summary>
-        public string RowToolTip => IsFolder ? Name : File?.RelativePath;
+        public string? RowToolTip => IsFolder ? Name : File?.RelativePath;
 
         /// <summary>
         /// Builds the folder tree (roots back to the repository root) from a flat set of changed
@@ -112,7 +112,7 @@ namespace LoreVS.UI
         /// <c>IVsImageService2.GetImageMonikerForFile</c>). When null, file leaves use a generic
         /// document icon.
         /// </param>
-        public static List<LoreTreeNode> BuildTree(IEnumerable<LoreChangeItem> items, Func<string, ImageMoniker> fileIconResolver = null)
+        public static List<LoreTreeNode> BuildTree(IEnumerable<LoreChangeItem> items, Func<string, ImageMoniker>? fileIconResolver = null)
         {
             var root = new LoreTreeNode(string.Empty, isFolder: true);
             var folderCache = new Dictionary<string, LoreTreeNode>(StringComparer.OrdinalIgnoreCase)
@@ -211,7 +211,7 @@ namespace LoreVS.UI
             return string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase);
         }
 
-        private void OnPropertyChanged([CallerMemberName] string propertyName = null) =>
+        private void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
 }

@@ -41,7 +41,7 @@ namespace LoreVS.Commands
                     continue;
                 }
 
-                string root = client.FindRepositoryRoot(fullPath);
+                string? root = client.FindRepositoryRoot(fullPath);
                 if (root == null)
                 {
                     continue;
