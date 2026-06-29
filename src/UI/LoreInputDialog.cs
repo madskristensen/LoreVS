@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using Microsoft.VisualStudio.PlatformUI;
+using Microsoft.VisualStudio.Shell;
 
 namespace LoreVS.UI
 {
@@ -22,6 +23,13 @@ namespace LoreVS.UI
             ResizeMode = ResizeMode.NoResize;
             HasMaximizeButton = false;
             HasMinimizeButton = false;
+
+            // Apply the shared VS themed-dialog styles so the text box and buttons match the IDE
+            // theme instead of rendering as default white WPF controls, and paint the dialog body
+            // with the themed window background.
+            this.SetResourceReference(StyleProperty, VsResourceKeys.ThemedDialogDefaultStylesKey);
+            this.SetResourceReference(BackgroundProperty, EnvironmentColors.ToolWindowBackgroundBrushKey);
+            this.SetResourceReference(ForegroundProperty, EnvironmentColors.ToolWindowTextBrushKey);
 
             var root = new StackPanel { Margin = new Thickness(12) };
 
