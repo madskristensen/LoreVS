@@ -108,6 +108,17 @@
   <ItemGroup>
     <Reference Include="System.ComponentModel.Composition" />
     <Reference Include="System.Design" />
+    <!-- Private VS assembly that hosts the 3-way merge window (IModernMergeService). The 17.x copy is
+         vendored under lib\ (it depends only on the 17.x VS assemblies the toolkit already brings, so
+         it adds no version conflicts). It is shipped in the VSIX (CopyLocal) so the CLR can resolve it
+         from the extension folder - the Team Explorer folder VS loads it from is not on the probing
+         path, and without a local copy any code path that enumerates this assembly's types (e.g. tool
+         window construction) fails to load LoreMergePresenter with a ReflectionTypeLoadException. The
+         assembly is strong-named with the same identity VS already has loaded, so the runtime binds to
+         a single assembly and the cast to the live merge service still succeeds. -->
+    <Reference Include="Microsoft.VisualStudio.Merge">
+      <HintPath>..\lib\Microsoft.VisualStudio.Merge.dll</HintPath>
+    </Reference>
   </ItemGroup>
 
   <ItemGroup>

@@ -62,6 +62,49 @@ namespace LoreVS.SourceControl
         /// </summary>
         Task<LoreCommandResult> AmendAsync(string workingDirectory, string message, string identity, CancellationToken cancellationToken);
 
+        /// <summary>
+        /// Returns every branch in the repository at <paramref name="repositoryRoot"/> (local and
+        /// remote), with the active branch flagged. Runs offline.
+        /// </summary>
+        Task<LoreBranchEntry[]> ListBranchesAsync(string repositoryRoot, CancellationToken cancellationToken);
+
+        /// <summary>
+        /// Creates a branch named <paramref name="branchName"/> from the current revision. When
+        /// <paramref name="checkout"/> is <see langword="true"/> the working tree is switched to the
+        /// new branch (equivalent to <c>lore branch create</c> followed by a switch); otherwise the
+        /// current branch is left checked out.
+        /// </summary>
+        Task<LoreCommandResult> CreateBranchAsync(string workingDirectory, string branchName, string identity, bool checkout, CancellationToken cancellationToken);
+
+        /// <summary>
+        /// Switches the working tree at <paramref name="workingDirectory"/> to the existing branch
+        /// <paramref name="branchName"/> (equivalent to <c>lore branch switch</c>).
+        /// </summary>
+        Task<LoreCommandResult> SwitchBranchAsync(string workingDirectory, string branchName, CancellationToken cancellationToken);
+
+        /// <summary>
+        /// Merges the branch <paramref name="sourceBranch"/> into the current branch
+        /// (equivalent to <c>lore branch merge-into</c>). When the merge completes cleanly the
+        /// revision is committed automatically. When it produces conflicts the merge is left in
+        /// progress, the conflicted working files are written with diff3 markers, and their absolute
+        /// paths are returned so the caller can resolve them (e.g. in the IDE merge tool) and then
+        /// call <see cref="ResolveMergeAsync"/>, or <see cref="AbortMergeAsync"/> to back out.
+        /// </summary>
+        Task<LoreMergeResult> MergeBranchAsync(string workingDirectory, string sourceBranch, string identity, CancellationToken cancellationToken);
+
+        /// <summary>
+        /// Finalizes an in-progress merge: stages the resolved content of <paramref name="paths"/>,
+        /// marks those files resolved, and commits the merge revision with <paramref name="message"/>
+        /// (equivalent to <c>lore file stage-merge</c> + <c>lore branch merge resolve</c> + commit).
+        /// </summary>
+        Task<LoreCommandResult> ResolveMergeAsync(string workingDirectory, string[] paths, string message, string identity, CancellationToken cancellationToken);
+
+        /// <summary>
+        /// Aborts an in-progress merge, restoring the working tree to its pre-merge state
+        /// (equivalent to <c>lore branch merge abort</c>).
+        /// </summary>
+        Task<LoreCommandResult> AbortMergeAsync(string workingDirectory, CancellationToken cancellationToken);
+
         /// <summary>Pushes local commits to the remote.</summary>
         Task<LoreCommandResult> PushAsync(string workingDirectory, CancellationToken cancellationToken);
 
@@ -109,6 +152,51 @@ namespace LoreVS.SourceControl
 
         /// <summary>Hex hash of the local branch tip revision; the committed base for diffs.</summary>
         public string LocalRevisionHash { get; set; } = string.Empty;
+    }
+
+    /// <summary>
+    /// A single branch in a Lore repository. The wire shape for
+    /// <see cref="ILoreWorkerContract.ListBranchesAsync"/>; settable members keep it trivially
+    /// serializable by System.Text.Json across the pipe.
+    /// </summary>
+    public sealed class LoreBranchEntry
+    {
+        /// <summary>The branch name (e.g. <c>main</c>).</summary>
+        public string Name { get; set; } = string.Empty;
+
+        /// <summary>The branch category, or empty when uncategorized.</summary>
+        public string Category { get; set; } = string.Empty;
+
+        /// <summary>True when this is the branch the working tree is currently on.</summary>
+        public bool IsCurrent { get; set; }
+
+        /// <summary>True when the branch lives on the remote rather than locally.</summary>
+        public bool IsRemote { get; set; }
+
+        /// <summary>True when the branch has been archived.</summary>
+        public bool Archived { get; set; }
+    }
+
+    /// <summary>
+    /// Outcome of a branch merge. The wire shape for <see cref="ILoreWorkerContract.MergeBranchAsync"/>;
+    /// settable members keep it trivially serializable by System.Text.Json across the pipe.
+    /// </summary>
+    public sealed class LoreMergeResult
+    {
+        /// <summary>True when the merge completed and committed cleanly with no conflicts.</summary>
+        public bool Success { get; set; }
+
+        /// <summary>True when the merge stopped on conflicts that must be resolved.</summary>
+        public bool HasConflicts { get; set; }
+
+        /// <summary>
+        /// Absolute paths of the conflicted working files (each written with diff3 markers), empty
+        /// when the merge succeeded or failed outright.
+        /// </summary>
+        public string[] ConflictPaths { get; set; } = System.Array.Empty<string>();
+
+        /// <summary>Error detail when the merge failed for a reason other than conflicts.</summary>
+        public string ErrorMessage { get; set; } = string.Empty;
     }
 
     /// <summary>

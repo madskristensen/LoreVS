@@ -19,11 +19,10 @@
                    Visibility="Collapsed" />
 
         <DockPanel x:Name="RepositoryPanel">
-            <!-- Branch header -->
-            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
-                <TextBlock Text="{Binding BranchText}" FontWeight="Bold" VerticalAlignment="Center" />
-                <TextBlock Text="{Binding AheadBehindText}" Margin="10,0,0,0" Opacity="0.8" VerticalAlignment="Center" />
-            </StackPanel>
+            <!-- Ahead/behind indicator. Branch switch/create/merge lives on the toolbar dropdown. -->
+            <TextBlock DockPanel.Dock="Top"
+                       Text="{Binding AheadBehindText}"
+                       Margin="0,0,0,8" Opacity="0.8" VerticalAlignment="Center" />
 
             <!-- Commit area -->
             <StackPanel DockPanel.Dock="Top" Margin="0,0,0,8">

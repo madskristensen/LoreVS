@@ -335,6 +335,440 @@ namespace LoreVS.Worker
         }
 
         /// <inheritdoc/>
+        public async Task<LoreBranchEntry[]> ListBranchesAsync(string repositoryRoot, CancellationToken cancellationToken)
+        {
+            if (string.IsNullOrEmpty(repositoryRoot))
+            {
+                return Array.Empty<LoreBranchEntry>();
+            }
+
+            var entries = new List<LoreBranchEntry>();
+
+            await RunExclusiveAsync(() =>
+            {
+                using var globalArgs = new LoreGlobalArgs { RepositoryPath = repositoryRoot, Offline = true };
+                using var args = new LoreBranchListArgs { Archived = false };
+
+                Lore.BranchList(globalArgs, args).Callback((loreEvent, userContext) =>
+                {
+                    // Never let an exception escape into the native callback: a throw across the
+                    // managed/native boundary can leave the SDK's event loop waiting forever.
+                    try
+                    {
+                        if (loreEvent.Tag != LoreEventTag.BRANCH_LIST_ENTRY)
+                        {
+                            return;
+                        }
+
+                        LoreBranchListEntryEventDataFFI entry = loreEvent.GetData<LoreBranchListEntryEventDataFFI>();
+                        entries.Add(new LoreBranchEntry
+                        {
+                            Name = entry.Name ?? string.Empty,
+                            Category = entry.Category ?? string.Empty,
+                            IsCurrent = entry.IsCurrent,
+                            IsRemote = entry.Location == LoreBranchLocation.REMOTE,
+                            Archived = entry.Archived,
+                        });
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.Error.WriteLine("[LoreVS.Worker] branch list callback failed: " + ex);
+                    }
+                }).Wait();
+            }).ConfigureAwait(false);
+
+            return entries.ToArray();
+        }
+
+        /// <inheritdoc/>
+        public Task<LoreCommandResult> CreateBranchAsync(string workingDirectory, string branchName, string identity, bool checkout, CancellationToken cancellationToken)
+        {
+            if (string.IsNullOrWhiteSpace(branchName))
+            {
+                return Task.FromResult(LoreCommandResult.Failed("A branch name is required."));
+            }
+
+            return ExecuteAsync(identity, offline: true, workingDirectory, globalArgs =>
+            {
+                // Lore's branch-create checks out the new branch as a side effect. When the caller
+                // opts out of checkout, capture the branch that is current beforehand so we can
+                // switch back to it once the new branch has been created.
+                string? previousBranch = null;
+                if (!checkout)
+                {
+                    using var listArgs = new LoreBranchListArgs { Archived = false };
+                    Lore.BranchList(globalArgs, listArgs).Callback((loreEvent, userContext) =>
+                    {
+                        try
+                        {
+                            if (loreEvent.Tag != LoreEventTag.BRANCH_LIST_ENTRY)
+                            {
+                                return;
+                            }
+
+                            LoreBranchListEntryEventDataFFI entry = loreEvent.GetData<LoreBranchListEntryEventDataFFI>();
+                            if (entry.IsCurrent && entry.Location != LoreBranchLocation.REMOTE)
+                            {
+                                previousBranch = entry.Name;
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.Error.WriteLine("[LoreVS.Worker] create-branch current lookup failed: " + ex);
+                        }
+                    }).Wait();
+                }
+
+                // Create the branch at the current revision; the SDK leaves the working tree on the
+                // new branch. Lore reports a refused create (for example, uncommitted changes in the
+                // working tree block the implicit checkout, or the name already exists) through an
+                // ERROR event rather than a thrown exception, so capture it and surface it as a real
+                // failure instead of a silent no-op.
+                string? createError = null;
+                using (var createArgs = new LoreBranchCreateArgs { Branch = branchName })
+                {
+                    Lore.BranchCreate(globalArgs, createArgs).Callback((loreEvent, userContext) =>
+                    {
+                        try
+                        {
+                            if (loreEvent.Tag == LoreEventTag.ERROR)
+                            {
+                                LoreErrorEventDataFFI err = loreEvent.GetData<LoreErrorEventDataFFI>();
+                                createError = string.IsNullOrEmpty(err.ErrorInner) ? "Creating the branch failed." : err.ErrorInner;
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.Error.WriteLine("[LoreVS.Worker] branch create callback failed: " + ex);
+                        }
+                    }).Wait();
+                }
+
+                if (createError != null)
+                {
+                    throw new InvalidOperationException(DescribeBranchError(createError));
+                }
+
+                // Honor "do not checkout" by switching back to the previously current branch.
+                if (!checkout && !string.IsNullOrEmpty(previousBranch))
+                {
+                    string? switchBackError = null;
+                    using var switchArgs = new LoreBranchSwitchArgs { Branch = previousBranch };
+                    Lore.BranchSwitch(globalArgs, switchArgs).Callback((loreEvent, userContext) =>
+                    {
+                        try
+                        {
+                            if (loreEvent.Tag == LoreEventTag.ERROR)
+                            {
+                                LoreErrorEventDataFFI err = loreEvent.GetData<LoreErrorEventDataFFI>();
+                                switchBackError = string.IsNullOrEmpty(err.ErrorInner) ? "Switching back to the previous branch failed." : err.ErrorInner;
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.Error.WriteLine("[LoreVS.Worker] create-branch switch-back callback failed: " + ex);
+                        }
+                    }).Wait();
+
+                    if (switchBackError != null)
+                    {
+                        throw new InvalidOperationException(DescribeBranchError(switchBackError));
+                    }
+                }
+            });
+        }
+
+        /// <inheritdoc/>
+        public async Task<LoreCommandResult> SwitchBranchAsync(string workingDirectory, string branchName, CancellationToken cancellationToken)
+        {
+            if (string.IsNullOrWhiteSpace(branchName))
+            {
+                return LoreCommandResult.Failed("A branch name is required.");
+            }
+
+            // Lore's local store is a fragment cache (see Lore system-design 12.6): switching to a
+            // branch whose content is still cached needs no network, but the LRU cache can evict the
+            // target's fragments, in which case the switch must re-fetch them from the remote. Try
+            // offline first for the fast/disconnected path; only reach for the network when the local
+            // content is genuinely missing.
+            LoreCommandResult offline = await TrySwitchBranchAsync(workingDirectory, branchName, offline: true).ConfigureAwait(false);
+            if (offline.Success || !RequiresRemoteContent(offline.Error))
+            {
+                return offline;
+            }
+
+            WorkerLog.Write("SwitchBranchAsync: target content not cached locally; retrying online");
+            LoreCommandResult online = await TrySwitchBranchAsync(workingDirectory, branchName, offline: false).ConfigureAwait(false);
+            if (online.Success)
+            {
+                return online;
+            }
+
+            // The online retry is the only way to materialize evicted content, so a connection failure
+            // here means the user simply has no server to fetch from. Replace the raw transport error
+            // with an actionable message.
+            return IsRemoteUnreachable(online.Error)
+                ? LoreCommandResult.Failed(
+                    "Switching to '" + branchName + "' needs file content that isn't cached locally, and the " +
+                    "Lore server could not be reached to fetch it.\r\n\r\nStart (or reconnect to) your Lore " +
+                    "server and try again.\r\n\r\nDetails: " + online.Error)
+                : online;
+        }
+
+        /// <summary>
+        /// Runs a single branch-switch attempt with the given connectivity mode, translating Lore's
+        /// ERROR events (which the SDK reports instead of throwing) into a failed result.
+        /// </summary>
+        private static async Task<LoreCommandResult> TrySwitchBranchAsync(string workingDirectory, string branchName, bool offline)
+        {
+            string? switchError = null;
+            try
+            {
+                await RunExclusiveAsync(
+                    () =>
+                    {
+                        var globalArgs = new LoreGlobalArgs { RepositoryPath = workingDirectory, Offline = offline };
+                        try
+                        {
+                            using var args = new LoreBranchSwitchArgs { Branch = branchName };
+                            Lore.BranchSwitch(globalArgs, args).Callback((loreEvent, userContext) =>
+                            {
+                                // Never let an exception escape into the native callback: a throw across
+                                // the managed/native boundary can leave the SDK's event loop waiting forever.
+                                try
+                                {
+                                    if (loreEvent.Tag == LoreEventTag.ERROR)
+                                    {
+                                        LoreErrorEventDataFFI err = loreEvent.GetData<LoreErrorEventDataFFI>();
+                                        switchError = string.IsNullOrEmpty(err.ErrorInner) ? "The branch switch failed." : err.ErrorInner;
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    Console.Error.WriteLine("[LoreVS.Worker] branch switch callback failed: " + ex);
+                                }
+                            }).Wait();
+                        }
+                        finally
+                        {
+                            globalArgs.Dispose();
+                        }
+                    },
+                    operation: offline ? "SwitchBranchAsync(offline)" : "SwitchBranchAsync(online)").ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                return LoreCommandResult.Failed(Unwrap(ex).Message);
+            }
+
+            // Lore reports a refused switch (e.g. uncommitted changes, missing content) through an
+            // ERROR event rather than a thrown exception; surface it as a failure instead of a false
+            // success so the caller does not silently believe the branch changed.
+            return switchError != null
+                ? LoreCommandResult.Failed(switchError)
+                : new LoreCommandResult(true, 0, string.Empty, string.Empty);
+        }
+
+        /// <summary>
+        /// True when a Lore error indicates the operation needs content that is not materialized in the
+        /// local fragment cache and must be fetched from the remote (so an online retry can help).
+        /// </summary>
+        private static bool RequiresRemoteContent(string error)
+        {
+            return !string.IsNullOrEmpty(error) &&
+                   (error.IndexOf("Address not found", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    error.IndexOf("synchronize state", StringComparison.OrdinalIgnoreCase) >= 0);
+        }
+
+        /// <summary>True when a Lore error indicates the remote server could not be reached.</summary>
+        private static bool IsRemoteUnreachable(string error)
+        {
+            return !string.IsNullOrEmpty(error) &&
+                   (error.IndexOf("Not connected to remote", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    error.IndexOf("transport error", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    error.IndexOf("gRPC connection", StringComparison.OrdinalIgnoreCase) >= 0);
+        }
+
+        /// <summary>
+        /// Adds an actionable hint to Lore branch errors caused by a dirty working tree, which blocks
+        /// the implicit checkout that branch-create performs. Other errors are returned unchanged.
+        /// </summary>
+        private static string DescribeBranchError(string error)
+        {
+            if (!string.IsNullOrEmpty(error) &&
+                (error.IndexOf("uncommitted", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                 error.IndexOf("working tree", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                 error.IndexOf("working copy", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                 error.IndexOf("would be overwritten", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                 error.IndexOf("pending change", StringComparison.OrdinalIgnoreCase) >= 0))
+            {
+                return "Commit your pending changes first, then create the branch.\r\n\r\nDetails: " + error;
+            }
+
+            return error;
+        }
+
+        /// <inheritdoc/>
+        public async Task<LoreMergeResult> MergeBranchAsync(string workingDirectory, string sourceBranch, string identity, CancellationToken cancellationToken)
+        {
+            if (string.IsNullOrWhiteSpace(sourceBranch))
+            {
+                return new LoreMergeResult { Success = false, ErrorMessage = "A branch name is required." };
+            }
+
+            // Like switching, a merge must materialize the source branch's content. Try offline first
+            // (no network when the content is cached); only retry online when Lore reports the content
+            // is missing from the local cache.
+            LoreMergeResult offline = await TryMergeBranchAsync(workingDirectory, sourceBranch, identity, offline: true).ConfigureAwait(false);
+            if (offline.Success || offline.HasConflicts || !RequiresRemoteContent(offline.ErrorMessage))
+            {
+                return offline;
+            }
+
+            WorkerLog.Write("MergeBranchAsync: source content not cached locally; retrying online");
+            LoreMergeResult online = await TryMergeBranchAsync(workingDirectory, sourceBranch, identity, offline: false).ConfigureAwait(false);
+            if (online.Success || online.HasConflicts)
+            {
+                return online;
+            }
+
+            if (IsRemoteUnreachable(online.ErrorMessage))
+            {
+                online.ErrorMessage =
+                    "Merging '" + sourceBranch + "' needs file content that isn't cached locally, and the " +
+                    "Lore server could not be reached to fetch it.\r\n\r\nStart (or reconnect to) your Lore " +
+                    "server and try again.\r\n\r\nDetails: " + online.ErrorMessage;
+            }
+
+            return online;
+        }
+
+        /// <summary>
+        /// Runs a single merge attempt with the given connectivity mode. Conflicts and ERROR events are
+        /// translated into the appropriate <see cref="LoreMergeResult"/> outcome.
+        /// </summary>
+        private static async Task<LoreMergeResult> TryMergeBranchAsync(string workingDirectory, string sourceBranch, string identity, bool offline)
+        {
+            string? mergeError = null;
+            var conflicts = new List<string>();
+
+            try
+            {
+                await RunExclusiveAsync(
+                    () =>
+                    {
+                        var globalArgs = new LoreGlobalArgs { RepositoryPath = workingDirectory, Offline = offline };
+                        if (!string.IsNullOrWhiteSpace(identity))
+                        {
+                            globalArgs.Identity = identity;
+                        }
+
+                        // BranchMergeStart folds the named branch into the CURRENT branch: it syncs the
+                        // working tree and auto-commits the merge revision when there are no conflicts. On
+                        // conflicts it leaves the merge in progress and writes diff3 markers into the
+                        // conflicted working files. The native SDK surfaces failures as ERROR events here
+                        // (it does not always throw), so the events are inspected rather than relying on a throw.
+                        try
+                        {
+                            using var args = new LoreBranchMergeStartArgs
+                            {
+                                Branch = sourceBranch,
+                                Message = $"Merge branch '{sourceBranch}'",
+                            };
+
+                            Lore.BranchMergeStart(globalArgs, args).Callback((loreEvent, userContext) =>
+                            {
+                                // Never let an exception escape into the native callback: a throw across the
+                                // managed/native boundary can leave the SDK's event loop waiting forever.
+                                try
+                                {
+                                    if (loreEvent.Tag == LoreEventTag.ERROR)
+                                    {
+                                        LoreErrorEventDataFFI err = loreEvent.GetData<LoreErrorEventDataFFI>();
+                                        mergeError = string.IsNullOrEmpty(err.ErrorInner) ? "The merge failed." : err.ErrorInner;
+                                    }
+                                    else if (loreEvent.Tag == LoreEventTag.BRANCH_MERGE_CONFLICT_FILE)
+                                    {
+                                        LoreBranchMergeConflictFileEventDataFFI conflict = loreEvent.GetData<LoreBranchMergeConflictFileEventDataFFI>();
+                                        if (!string.IsNullOrEmpty(conflict.Path))
+                                        {
+                                            conflicts.Add(NormalizePath(workingDirectory, conflict.Path));
+                                        }
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    Console.Error.WriteLine("[LoreVS.Worker] merge callback failed: " + ex);
+                                }
+                            }).Wait();
+                        }
+                        finally
+                        {
+                            globalArgs.Dispose();
+                        }
+                    },
+                    operation: offline ? "MergeBranchAsync(offline)" : "MergeBranchAsync(online)").ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                return new LoreMergeResult { Success = false, ErrorMessage = Unwrap(ex).Message };
+            }
+
+            if (conflicts.Count > 0)
+            {
+                return new LoreMergeResult { Success = false, HasConflicts = true, ConflictPaths = conflicts.ToArray() };
+            }
+
+            if (mergeError != null)
+            {
+                return new LoreMergeResult { Success = false, ErrorMessage = mergeError };
+            }
+
+            return new LoreMergeResult { Success = true };
+        }
+
+        /// <inheritdoc/>
+        public Task<LoreCommandResult> ResolveMergeAsync(string workingDirectory, string[] paths, string message, string identity, CancellationToken cancellationToken)
+        {
+            if (paths == null || paths.Length == 0)
+            {
+                return Task.FromResult(LoreCommandResult.Failed("At least one resolved path is required."));
+            }
+
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                return Task.FromResult(LoreCommandResult.Failed("A commit message is required."));
+            }
+
+            return ExecuteAsync(identity, offline: true, workingDirectory, globalArgs =>
+            {
+                // Stage the resolved content, mark the files resolved, then commit the merge revision.
+                using (var stageArgs = new LoreFileStageMergeArgs { Paths = paths })
+                {
+                    Lore.FileStageMerge(globalArgs, stageArgs).Wait();
+                }
+
+                using (var resolveArgs = new LoreBranchMergeResolveArgs { Paths = paths })
+                {
+                    Lore.BranchMergeResolve(globalArgs, resolveArgs).Wait();
+                }
+
+                using var commitArgs = new LoreRevisionCommitArgs { Message = message };
+                Lore.RevisionCommit(globalArgs, commitArgs).Wait();
+            });
+        }
+
+        /// <inheritdoc/>
+        public Task<LoreCommandResult> AbortMergeAsync(string workingDirectory, CancellationToken cancellationToken)
+        {
+            return ExecuteAsync(identity: null, offline: true, workingDirectory, globalArgs =>
+            {
+                using var args = new LoreBranchMergeAbortArgs();
+                Lore.BranchMergeAbort(globalArgs, args).Wait();
+            });
+        }
+
+        /// <inheritdoc/>
         public Task<LoreCommandResult> PushAsync(string workingDirectory, CancellationToken cancellationToken)
         {
             return ExecuteAsync(identity: null, offline: false, workingDirectory, globalArgs =>

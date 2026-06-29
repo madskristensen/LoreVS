@@ -33,6 +33,7 @@ namespace LoreVS
         public const int LoreSubMenu = 0x0003;
         public const int LoreChangesToolbar = 0x0004;
         public const int LoreChangesToolbarGroup = 0x0005;
+        public const int LoreChangesBranchGroup = 0x000A;
         public const int AddToLoreCommand = 0x0101;
         public const int CommitToLoreCommand = 0x0102;
         public const int CloneCommand = 0x0103;
@@ -42,6 +43,7 @@ namespace LoreVS
         public const int PullCommand = 0x0108;
         public const int PushCommand = 0x0109;
         public const int RefreshChangesCommand = 0x010A;
+        public const int BranchCommand = 0x010E;
         public const int idmWSE_ContextMenu = 0x0002;
     }
 }

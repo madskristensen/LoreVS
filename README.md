@@ -20,11 +20,15 @@ commit - all without leaving the IDE or dropping to a terminal.
 ## Add a solution to Lore
 
 Right-click the solution node (or the Open Folder root) and choose
-**Lore > Add to Lore Source Control**. Enter a Lore server URL (e.g.
-`lore://127.0.0.1:41337`) to create the repository on that server and bind a
-remote so you can push, or leave it blank to create a fully offline repository.
-Lore binds the loaded projects to the provider; the `.lore` folder records the
-binding so it is restored automatically the next time you open the solution.
+**Lore > Add to Lore Source Control**. Choose **Local repository** (the default)
+to create a fully offline repository where all content stays on your machine, so
+you can branch, commit, and switch branches without a server. Choose **Create on
+a Lore server** and enter a server URL (e.g. `lore://127.0.0.1:41337`) only when
+you want to bind a remote so you can push. Lore binds the loaded projects to the
+provider; the `.lore` folder records the binding so it is restored automatically
+the next time you open the solution.
+
+![Add to Lore](art/add-to-lore.png)
 
 ## Clone an existing repository
 
@@ -70,6 +74,29 @@ From here you can:
   committed state.
 - Use the toolbar to **Pull** (sync the latest remote revisions), **Push**
   committed revisions, or **Refresh** the change list.
+
+## Work with branches
+
+Click the branch button (showing the current branch name) on the Lore Changes
+toolbar to open the branch picker. From there you can:
+
+- Switch to any other local branch (the current branch is marked and disabled).
+- Choose **New Branch...** to open the create-branch dialog. Enter a name, see
+  the branch you are basing it on (Lore always branches from the current
+  revision), and choose whether to check out the new branch. Leave **Checkout
+  branch** unchecked to create the branch without leaving your current one.
+- Choose **Merge Branch into Current...** and pick a branch to fold it into the
+  branch you are on. When the merge has conflicts, Visual Studio's built-in 3-way
+  merge tool opens for each conflicted file (current, incoming, and base). Resolve
+  and accept each one and Lore commits the merge automatically; close the merge
+  tool without accepting to abort and restore the working tree.
+
+Switching and merging are offline-first: when the target branch's content is
+already cached locally they complete without a network round trip. Lore's local
+store is an LRU cache, so content can be evicted; if a switch or merge needs
+content that is no longer cached, it is fetched from the Lore server. When that
+content is missing and the server is unreachable, the operation reports a clear
+message asking you to start (or reconnect to) your Lore server and try again.
 
 ## Settings
 

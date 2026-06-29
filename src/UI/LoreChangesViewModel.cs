@@ -34,6 +34,8 @@ namespace LoreVS.UI
         private bool _refreshRunning;
         private bool _refreshQueued;
         private string _branchText = string.Empty;
+        private string _currentBranchName = string.Empty;
+        private IReadOnlyList<LoreBranchEntry> _cachedBranches = Array.Empty<LoreBranchEntry>();
         private string _aheadBehindText = string.Empty;
         private string _commitMessage = string.Empty;
         private bool _amend;
@@ -72,7 +74,16 @@ namespace LoreVS.UI
         public string BranchText
         {
             get => _branchText;
-            private set => SetProperty(ref _branchText, value);
+            private set
+            {
+                if (SetProperty(ref _branchText, value))
+                {
+                    // The toolbar branch button renders its caption from BeforeQueryStatus, which the
+                    // shell only re-queries on idle. Force a command-UI update so the button reflects
+                    // the new branch immediately after a switch/create.
+                    RefreshBranchCommandUi();
+                }
+            }
         }
 
         /// <summary>Incoming/outgoing indicator (e.g. <c>Outgoing 2  Incoming 1</c>).</summary>
@@ -210,6 +221,8 @@ namespace LoreVS.UI
                 _treeRoots = new List<LoreTreeNode>();
                 Nodes.Clear();
                 BranchText = string.Empty;
+                _currentBranchName = string.Empty;
+                _cachedBranches = Array.Empty<LoreBranchEntry>();
                 AheadBehindText = string.Empty;
                 OnPropertyChanged(nameof(HasChanges));
                 StatusText = "This solution or folder is not under Lore source control.";
@@ -308,6 +321,9 @@ namespace LoreVS.UI
 
                 UpdateBranchInfo(snapshot?.Info);
             });
+
+            // Warm the branch cache (off the critical path) so the toolbar dropdown opens instantly.
+            await RefreshBranchCacheAsync();
         }
 
         /// <summary>True when there is at least one changed file.</summary>
@@ -523,6 +539,157 @@ namespace LoreVS.UI
         public Task ShowDiffAsync(LoreChangeItem item) =>
             LoreDiffPresenter.ShowAsync(_client!, _repositoryRoot!, item);
 
+        /// <summary>Returns the repository's branches (local and remote) for the branch picker.</summary>
+        public async Task<IReadOnlyList<LoreBranchEntry>> GetBranchesAsync()
+        {
+            if (!HasRepository || _client == null)
+            {
+                return Array.Empty<LoreBranchEntry>();
+            }
+
+            string root = _repositoryRoot!;
+            ILoreClient client = _client!;
+            try
+            {
+                LoreBranchEntry[] branches = await Task.Run(() => client.ListBranches(root));
+                _cachedBranches = branches ?? Array.Empty<LoreBranchEntry>();
+                return _cachedBranches;
+            }
+            catch (Exception ex)
+            {
+                await ex.LogAsync();
+                return Array.Empty<LoreBranchEntry>();
+            }
+        }
+
+        /// <summary>
+        /// The last-known branch list, populated by <see cref="GetBranchesAsync"/> and the refresh
+        /// cycle. Lets the branch dropdown open instantly instead of waiting on a worker round-trip.
+        /// </summary>
+        public IReadOnlyList<LoreBranchEntry> CachedBranches => _cachedBranches;
+
+        /// <summary>Refreshes <see cref="CachedBranches"/> in the background; failures are logged.</summary>
+        public Task RefreshBranchCacheAsync() => GetBranchesAsync();
+
+        /// <summary>Switches the working tree to an existing branch.</summary>
+        public async Task SwitchBranchAsync(string branchName)
+        {
+            if (!HasRepository || _client == null || string.IsNullOrWhiteSpace(branchName) ||
+                string.Equals(branchName, _currentBranchName, StringComparison.Ordinal) ||
+                !await EnsureAvailableAsync())
+            {
+                return;
+            }
+
+            await RunAsync($"Switching to {branchName}...", async () =>
+            {
+                string root = _repositoryRoot!;
+                ILoreClient client = _client!;
+                LoreCommandResult result = await Task.Run(() => client.SwitchBranch(root, branchName));
+                await LoreLog.WriteCommandAsync($"branch switch \"{branchName}\"", result.CombinedText);
+
+                if (!result.Success)
+                {
+                    await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+                    await VS.MessageBox.ShowErrorAsync("Lore", "Switching branch failed:\n\n" + result.CombinedText);
+                }
+            });
+
+            await RefreshAsync();
+            _sccService?.RefreshAllGlyphs();
+        }
+
+        /// <summary>Prompts for a name (and checkout choice), then creates a branch from the current revision.</summary>
+        public async Task CreateBranchAsync()
+        {
+            if (!HasRepository || _client == null || !await EnsureAvailableAsync())
+            {
+                return;
+            }
+
+            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+
+            // Lore's branch-create checks out the new branch as a side effect, which it refuses to do
+            // while the working tree has uncommitted changes. Stop early with a clear message instead
+            // of opening the dialog and letting the create fail.
+            if (HasChanges)
+            {
+                await VS.MessageBox.ShowWarningAsync("Lore",
+                    "You have uncommitted changes.\n\nCommit your changes before creating a branch.");
+                return;
+            }
+
+            var dialog = new LoreCreateBranchDialog(_currentBranchName);
+            if (dialog.ShowModal() != true || string.IsNullOrWhiteSpace(dialog.BranchName))
+            {
+                return;
+            }
+
+            string name = dialog.BranchName;
+            bool checkout = dialog.Checkout;
+
+            await RunAsync($"Creating branch {name}...", async () =>
+            {
+                string root = _repositoryRoot!;
+                ILoreClient client = _client!;
+                string identity = _identity;
+                LoreCommandResult result = await Task.Run(() => client.CreateBranch(root, name, identity, checkout));
+                await LoreLog.WriteCommandAsync($"branch create \"{name}\"", result.CombinedText);
+
+                if (!result.Success)
+                {
+                    await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+                    await VS.MessageBox.ShowErrorAsync("Lore", "Creating the branch failed:\n\n" + result.CombinedText);
+                }
+            });
+
+            await RefreshAsync();
+            _sccService?.RefreshAllGlyphs();
+        }
+
+        /// <summary>Merges the supplied branch into the current branch after confirmation.</summary>
+        public async Task MergeBranchAsync(string sourceBranch)
+        {
+            if (!HasRepository || _client == null || string.IsNullOrWhiteSpace(sourceBranch) ||
+                !await EnsureAvailableAsync())
+            {
+                return;
+            }
+
+            string current = string.IsNullOrEmpty(_currentBranchName) ? "the current branch" : $"'{_currentBranchName}'";
+            bool confirmed = await VS.MessageBox.ShowConfirmAsync("Lore",
+                $"Merge branch '{sourceBranch}' into {current}?");
+            if (!confirmed)
+            {
+                return;
+            }
+
+            await RunAsync($"Merging {sourceBranch}...", async () =>
+            {
+                string root = _repositoryRoot!;
+                ILoreClient client = _client!;
+                string identity = _identity;
+                LoreMergeResult result = await Task.Run(() => client.MergeBranch(root, sourceBranch, identity));
+                await LoreLog.WriteCommandAsync($"branch merge-into \"{sourceBranch}\"",
+                    result.HasConflicts ? "Merge produced conflicts." : result.ErrorMessage);
+
+                if (result.HasConflicts)
+                {
+                    // Hand the conflicted files to the IDE's 3-way merge tool; on success the merge is
+                    // committed, otherwise the user is offered an abort inside the presenter.
+                    await LoreMergePresenter.ResolveAsync(client, root, sourceBranch, result.ConflictPaths, identity);
+                }
+                else if (!result.Success)
+                {
+                    await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+                    await VS.MessageBox.ShowErrorAsync("Lore", "The merge failed:\n\n" + result.ErrorMessage);
+                }
+            });
+
+            await RefreshAsync();
+            _sccService?.RefreshAllGlyphs();
+        }
+
         private async Task PushCoreAsync()
         {
             string root = _repositoryRoot!;
@@ -577,11 +744,13 @@ namespace LoreVS.UI
         {
             if (info == null || string.IsNullOrEmpty(info.BranchName))
             {
+                _currentBranchName = string.Empty;
                 BranchText = "(unknown branch)";
                 AheadBehindText = string.Empty;
                 return;
             }
 
+            _currentBranchName = info.BranchName;
             BranchText = info.HasRemote ? info.BranchName : info.BranchName + " (no remote)";
 
             var parts = new List<string>();
@@ -655,5 +824,21 @@ namespace LoreVS.UI
 
         private void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+
+        /// <summary>
+        /// Forces the shell to re-query command status so the toolbar branch button updates its
+        /// caption immediately instead of waiting for the next idle pulse.
+        /// </summary>
+        private void RefreshBranchCommandUi()
+        {
+            _ = ThreadHelper.JoinableTaskFactory.RunAsync(async () =>
+            {
+                await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+                if (await VS.Services.GetUIShellAsync() is IVsUIShell shell)
+                {
+                    shell.UpdateCommandUI(0);
+                }
+            });
+        }
     }
 }

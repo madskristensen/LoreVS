@@ -10,8 +10,8 @@ namespace LoreVS.Commands
 {
     /// <summary>
     /// "Add to Lore Source Control" command. Onboards the open solution/folder to Lore by
-    /// creating a repository on the configured server (running <c>lore repository create</c>
-    /// in the solution directory) and binding the loaded projects to the provider.
+    /// creating a repository (locally by default, or on a Lore server if the user opts in) and
+    /// binding the loaded projects to the provider.
     /// </summary>
     [Command(PackageIds.AddToLoreCommand)]
     internal sealed class AddToLoreCommand : BaseCommand<AddToLoreCommand>
@@ -58,20 +58,29 @@ namespace LoreVS.Commands
             General options = await General.GetLiveInstanceAsync();
             string repoName = Path.GetFileName(solutionDir);
 
-            // Ask where to create. A lore:// server URL creates the repo on that server and binds a
-            // remote; leaving it blank creates a fully offline repo (git-init style) with no remote.
-            string serverUrl = LoreInputDialog.Prompt("Add to Lore",
-                "Lore server URL to create the repository on (leave blank for an offline repository):",
-                LoreServerEndpoint.Default.ServerUrl) ?? string.Empty;
+            // Ask how to create. Local (offline, no remote) is the default so onboarding never binds
+            // a server unless the user explicitly opts in. A lore:// server URL creates the repo on
+            // that server and binds a remote; a bare name creates a fully offline repo (git-init style).
+            var dialog = new LoreAddToSourceControlDialog(repoName, LoreServerEndpoint.Default.ServerUrl);
+            if (dialog.ShowModal() != true)
+            {
+                return;
+            }
 
             string url = repoName;
-            if (LoreServerEndpoint.TryParse(serverUrl, out LoreServerEndpoint endpoint))
+            if (!dialog.IsLocal)
             {
+                if (!LoreServerEndpoint.TryParse(dialog.ServerUrl, out LoreServerEndpoint endpoint))
+                {
+                    await VS.MessageBox.ShowErrorAsync("Lore", "Enter a valid lore:// server URL, or choose a local repository.");
+                    return;
+                }
+
                 if (!await LoreServerHealth.IsReachableAsync(endpoint))
                 {
                     await VS.MessageBox.ShowErrorAsync("Lore",
                         $"No Lore server is reachable at {endpoint.ServerUrl}.\n\nStart a server (e.g. the demo " +
-                        "server on lore://127.0.0.1:41337), or leave the URL blank to create an offline repository.");
+                        "server on lore://127.0.0.1:41337), or choose a local repository.");
                     return;
                 }
 

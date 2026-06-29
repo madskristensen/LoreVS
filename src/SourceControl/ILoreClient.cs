@@ -52,6 +52,43 @@ namespace LoreVS.SourceControl
         /// or <see langword="null"/> when it cannot be determined.
         /// </summary>
         LoreRepositoryInfo? GetRepositoryInfo(string repositoryRoot);
+
+        /// <summary>
+        /// Returns every branch in the repository at <paramref name="repositoryRoot"/> (local and
+        /// remote), with the active branch flagged.
+        /// </summary>
+        LoreBranchEntry[] ListBranches(string repositoryRoot);
+
+        /// <summary>
+        /// Creates a branch named <paramref name="branchName"/> from the current revision. When
+        /// <paramref name="checkout"/> is <see langword="true"/> the working tree is switched to the
+        /// new branch; otherwise the current branch is left checked out.
+        /// </summary>
+        LoreCommandResult CreateBranch(string workingDirectory, string branchName, string identity, bool checkout);
+
+        /// <summary>
+        /// Switches the working tree at <paramref name="workingDirectory"/> to the existing branch
+        /// <paramref name="branchName"/>.
+        /// </summary>
+        LoreCommandResult SwitchBranch(string workingDirectory, string branchName);
+
+        /// <summary>
+        /// Merges the branch <paramref name="sourceBranch"/> into the current branch. Commits
+        /// automatically on a clean merge; on conflicts the merge is left in progress and the
+        /// conflicted file paths are returned for resolution via <see cref="ResolveMerge"/>
+        /// (or <see cref="AbortMerge"/> to back out).
+        /// </summary>
+        LoreMergeResult MergeBranch(string workingDirectory, string sourceBranch, string identity);
+
+        /// <summary>
+        /// Finalizes an in-progress merge: stages the resolved <paramref name="paths"/>, marks them
+        /// resolved, and commits the merge revision with <paramref name="message"/>.
+        /// </summary>
+        LoreCommandResult ResolveMerge(string workingDirectory, string[] paths, string message, string identity);
+
+        /// <summary>Aborts an in-progress merge, restoring the working tree to its pre-merge state.</summary>
+        LoreCommandResult AbortMerge(string workingDirectory);
+
         /// <summary>
         /// Onboards <paramref name="workingDirectory"/> to Lore by creating a repository on
         /// the server identified by <paramref name="repositoryUrl"/>. The existing files in

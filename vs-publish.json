@@ -18,6 +18,10 @@
     {
       "pathOnDisk": "art/solution-explorer.png",
       "targetPath": "art/solution-explorer.png"
+    },
+    {
+      "pathOnDisk": "art/add-to-lore.png",
+      "targetPath": "art/add-to-lore.png"
     }
   ],
   "overview": "README.md",

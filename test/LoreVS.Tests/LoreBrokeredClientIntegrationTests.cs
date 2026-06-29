@@ -167,6 +167,211 @@ namespace LoreVS.Tests
         }
 
         [TestMethod]
+        public void ListBranches_ReportsCurrentBranch()
+        {
+            string worker = RequireWorker();
+            string repoPath = Path.Combine(_tempRoot, "repo");
+            SeedRepository(worker, repoPath);
+
+            using var client = new LoreBrokeredClient(worker);
+            LoreBranchEntry[] branches = client.ListBranches(repoPath);
+
+            Assert.IsNotNull(branches, "The branch list should never be null.");
+            LoreBranchEntry[] local = branches.Where(b => !b.IsRemote).ToArray();
+            Assert.IsTrue(local.Length >= 1, "A seeded repository should have at least one local branch.");
+            Assert.IsTrue(local.Any(b => b.IsCurrent), "Exactly one local branch should be marked current.");
+        }
+
+        [TestMethod]
+        public void CreateBranch_MakesNewBranchCurrent()
+        {
+            string worker = RequireWorker();
+            string repoPath = Path.Combine(_tempRoot, "repo");
+            SeedRepository(worker, repoPath);
+
+            using var client = new LoreBrokeredClient(worker);
+
+            LoreCommandResult create = client.CreateBranch(repoPath, "feature", "test@lorevs", checkout: true);
+            Assert.IsTrue(create.Success, "Creating the branch failed: " + create.CombinedText);
+
+            LoreBranchEntry[] branches = client.ListBranches(repoPath);
+            LoreBranchEntry? feature = branches.FirstOrDefault(b => !b.IsRemote && b.Name == "feature");
+            Assert.IsNotNull(feature, "The newly created branch should appear in the branch list.");
+            Assert.IsTrue(feature!.IsCurrent, "The working tree should be switched to the new branch.");
+        }
+
+        [TestMethod]
+        public void CreateBranch_WithoutCheckout_LeavesCurrentBranch()
+        {
+            string worker = RequireWorker();
+            string repoPath = Path.Combine(_tempRoot, "repo");
+            SeedRepository(worker, repoPath);
+
+            using var client = new LoreBrokeredClient(worker);
+
+            string original = client.ListBranches(repoPath).First(b => !b.IsRemote && b.IsCurrent).Name;
+
+            LoreCommandResult create = client.CreateBranch(repoPath, "feature", "test@lorevs", checkout: false);
+            Assert.IsTrue(create.Success, "Creating the branch failed: " + create.CombinedText);
+
+            LoreBranchEntry[] branches = client.ListBranches(repoPath);
+            LoreBranchEntry? feature = branches.FirstOrDefault(b => !b.IsRemote && b.Name == "feature");
+            Assert.IsNotNull(feature, "The newly created branch should appear in the branch list.");
+            Assert.IsFalse(feature!.IsCurrent, "Without checkout the new branch should not be current.");
+            Assert.AreEqual(original, branches.First(b => !b.IsRemote && b.IsCurrent).Name,
+                "The original branch should remain checked out.");
+        }
+
+        [TestMethod]
+        public void CreateBranch_DuplicateName_ReportsFailure()
+        {
+            string worker = RequireWorker();
+            string repoPath = Path.Combine(_tempRoot, "repo");
+            SeedRepository(worker, repoPath);
+
+            using var client = new LoreBrokeredClient(worker);
+
+            string original = client.ListBranches(repoPath).First(b => !b.IsRemote && b.IsCurrent).Name;
+
+            Assert.IsTrue(client.CreateBranch(repoPath, "feature", "test@lorevs", checkout: false).Success,
+                "Creating the first branch should succeed.");
+
+            // Lore refuses to create a branch whose name already exists and reports it through an
+            // ERROR event rather than a thrown exception; the worker must surface that as a failure
+            // instead of a silent no-op.
+            LoreCommandResult duplicate = client.CreateBranch(repoPath, "feature", "test@lorevs", checkout: false);
+            Assert.IsFalse(duplicate.Success, "Creating a branch with an existing name should fail.");
+            Assert.IsFalse(string.IsNullOrWhiteSpace(duplicate.CombinedText),
+                "A failed create should carry an error message.");
+
+            Assert.AreEqual(original, client.ListBranches(repoPath).First(b => !b.IsRemote && b.IsCurrent).Name,
+                "The current branch should be unchanged after a failed create.");
+        }
+
+        [TestMethod]
+        public void SwitchBranch_ChangesCurrentBranch()
+        {
+            string worker = RequireWorker();
+            string repoPath = Path.Combine(_tempRoot, "repo");
+            SeedRepository(worker, repoPath);
+
+            using var client = new LoreBrokeredClient(worker);
+
+            string original = client.ListBranches(repoPath).First(b => !b.IsRemote && b.IsCurrent).Name;
+
+            Assert.IsTrue(client.CreateBranch(repoPath, "feature", "test@lorevs", checkout: true).Success);
+
+            LoreCommandResult back = client.SwitchBranch(repoPath, original);
+            Assert.IsTrue(back.Success, "Switching back to the original branch failed: " + back.CombinedText);
+
+            string current = client.ListBranches(repoPath).First(b => !b.IsRemote && b.IsCurrent).Name;
+            Assert.AreEqual(original, current, "The working tree should be back on the original branch.");
+        }
+
+        [TestMethod]
+        public void SwitchBranch_ToNonexistentBranch_ReportsFailure()
+        {
+            string worker = RequireWorker();
+            string repoPath = Path.Combine(_tempRoot, "repo");
+            SeedRepository(worker, repoPath);
+
+            using var client = new LoreBrokeredClient(worker);
+
+            string original = client.ListBranches(repoPath).First(b => !b.IsRemote && b.IsCurrent).Name;
+
+            // Lore reports a refused/failed switch through an ERROR event rather than a thrown
+            // exception; the worker must surface that as a failure instead of a false success.
+            LoreCommandResult result = client.SwitchBranch(repoPath, "does-not-exist");
+            Assert.IsFalse(result.Success, "Switching to a nonexistent branch should fail.");
+
+            string current = client.ListBranches(repoPath).First(b => !b.IsRemote && b.IsCurrent).Name;
+            Assert.AreEqual(original, current, "The current branch should be unchanged after a failed switch.");
+        }
+
+        [TestMethod]
+        public void MergeBranch_FoldsBranchIntoCurrent()
+        {
+            string worker = RequireWorker();
+            string repoPath = Path.Combine(_tempRoot, "repo");
+            SeedRepository(worker, repoPath);
+
+            using var client = new LoreBrokeredClient(worker);
+
+            // Commit the seeded working-tree changes so the base branch has a clean tree, capture its name.
+            Assert.IsTrue(client.StageAll(repoPath).Success);
+            Assert.IsTrue(client.Commit(repoPath, "Base work", "test@lorevs").Success);
+            string original = client.ListBranches(repoPath).First(b => !b.IsRemote && b.IsCurrent).Name;
+
+            // Create a feature branch (now current), commit a new file on it.
+            Assert.IsTrue(client.CreateBranch(repoPath, "feature", "test@lorevs", checkout: true).Success);
+            File.WriteAllText(Path.Combine(repoPath, "feature.txt"), "from feature");
+            Assert.IsTrue(client.StageAll(repoPath).Success);
+            Assert.IsTrue(client.Commit(repoPath, "Feature work", "test@lorevs").Success);
+
+            // Return to the base branch and merge the feature branch into it; the merge syncs the
+            // feature work into the base working tree.
+            Assert.IsTrue(client.SwitchBranch(repoPath, original).Success);
+            LoreMergeResult merge = client.MergeBranch(repoPath, "feature", "test@lorevs");
+            Assert.IsTrue(merge.Success, "Merging the feature branch failed: " + merge.ErrorMessage);
+
+            Assert.IsTrue(File.Exists(Path.Combine(repoPath, "feature.txt")),
+                "The merged file should be present on the base branch working tree.");
+        }
+
+        [TestMethod]
+        public void MergeBranch_OnConflict_ReportsConflictsAndResolveCommits()
+        {
+            string worker = RequireWorker();
+            string repoPath = Path.Combine(_tempRoot, "repo");
+            SeedRepository(worker, repoPath);
+
+            using var client = new LoreBrokeredClient(worker);
+
+            // Establish a shared file on the base branch.
+            string shared = Path.Combine(repoPath, "shared.txt");
+            File.WriteAllText(shared, "line one\nline two\nline three\n");
+            Assert.IsTrue(client.StageAll(repoPath).Success);
+            Assert.IsTrue(client.Commit(repoPath, "Base work", "test@lorevs").Success);
+            string original = client.ListBranches(repoPath).First(b => !b.IsRemote && b.IsCurrent).Name;
+
+            // On a feature branch, change the middle line.
+            Assert.IsTrue(client.CreateBranch(repoPath, "feature", "test@lorevs", checkout: true).Success);
+            File.WriteAllText(shared, "line one\nfeature line\nline three\n");
+            Assert.IsTrue(client.StageAll(repoPath).Success);
+            Assert.IsTrue(client.Commit(repoPath, "Feature edit", "test@lorevs").Success);
+
+            // Back on base, change the same line differently so the merge must conflict.
+            Assert.IsTrue(client.SwitchBranch(repoPath, original).Success);
+            File.WriteAllText(shared, "line one\nbase line\nline three\n");
+            Assert.IsTrue(client.StageAll(repoPath).Success);
+            Assert.IsTrue(client.Commit(repoPath, "Base edit", "test@lorevs").Success);
+
+            LoreMergeResult merge = client.MergeBranch(repoPath, "feature", "test@lorevs");
+            Assert.IsTrue(merge.HasConflicts, "The merge should have produced a conflict.");
+            Assert.IsFalse(merge.Success);
+            CollectionAssert.Contains(
+                merge.ConflictPaths.Select(p => Path.GetFullPath(p)).ToArray(),
+                Path.GetFullPath(shared),
+                "The conflicted file should be reported as an absolute path.");
+
+            // The working file is left with diff3 conflict markers.
+            string conflicted = File.ReadAllText(shared);
+            StringAssert.Contains(conflicted, "<<<<<<<");
+            StringAssert.Contains(conflicted, ">>>>>>>");
+
+            // Resolve by writing merged content, then finalize through the worker.
+            File.WriteAllText(shared, "line one\nmerged line\nline three\n");
+            LoreCommandResult resolve = client.ResolveMerge(
+                repoPath, merge.ConflictPaths, "Merge branch 'feature'", "test@lorevs");
+            Assert.IsTrue(resolve.Success, "Resolving the merge failed: " + resolve.CombinedText);
+
+            // The merge is committed and the working tree is clean of conflicts.
+            string final = File.ReadAllText(shared);
+            Assert.IsFalse(final.Contains("<<<<<<<"), "Conflict markers should be gone after resolution.");
+            StringAssert.Contains(final, "merged line");
+        }
+
+        [TestMethod]
         public void BlockingCallsUnderSingleThreadedSyncContext_DoNotDeadlock()
         {
             string worker = RequireWorker();

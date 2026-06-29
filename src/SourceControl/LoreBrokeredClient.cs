@@ -273,6 +273,83 @@ namespace LoreVS.SourceControl
         }
 
         /// <inheritdoc/>
+        public LoreBranchEntry[] ListBranches(string repositoryRoot)
+        {
+            if (string.IsNullOrEmpty(repositoryRoot))
+            {
+                return Array.Empty<LoreBranchEntry>();
+            }
+
+            ILoreWorkerContract? proxy = GetProxy();
+            if (proxy == null)
+            {
+                return Array.Empty<LoreBranchEntry>();
+            }
+
+            try
+            {
+                return Run(ct => proxy.ListBranchesAsync(repositoryRoot, ct), StatusCallTimeoutMs)
+                    ?? Array.Empty<LoreBranchEntry>();
+            }
+            catch (Exception ex)
+            {
+                HandleCallFailure(ex);
+                return Array.Empty<LoreBranchEntry>();
+            }
+        }
+
+        /// <inheritdoc/>
+        public LoreCommandResult CreateBranch(string workingDirectory, string branchName, string identity, bool checkout)
+        {
+            InvalidateCache();
+            return Invoke((proxy, ct) => proxy.CreateBranchAsync(workingDirectory, branchName, identity, checkout, ct));
+        }
+
+        /// <inheritdoc/>
+        public LoreCommandResult SwitchBranch(string workingDirectory, string branchName)
+        {
+            InvalidateCache();
+            return Invoke((proxy, ct) => proxy.SwitchBranchAsync(workingDirectory, branchName, ct));
+        }
+
+        /// <inheritdoc/>
+        public LoreMergeResult MergeBranch(string workingDirectory, string sourceBranch, string identity)
+        {
+            InvalidateCache();
+
+            ILoreWorkerContract? proxy = GetProxy();
+            if (proxy == null)
+            {
+                return new LoreMergeResult { Success = false, ErrorMessage = WorkerUnavailable().CombinedText };
+            }
+
+            try
+            {
+                return Run(ct => proxy.MergeBranchAsync(workingDirectory, sourceBranch, identity, ct))
+                    ?? new LoreMergeResult { Success = false, ErrorMessage = "The merge produced no result." };
+            }
+            catch (Exception ex)
+            {
+                HandleCallFailure(ex);
+                return new LoreMergeResult { Success = false, ErrorMessage = WorkerUnavailable().CombinedText };
+            }
+        }
+
+        /// <inheritdoc/>
+        public LoreCommandResult ResolveMerge(string workingDirectory, string[] paths, string message, string identity)
+        {
+            InvalidateCache();
+            return Invoke((proxy, ct) => proxy.ResolveMergeAsync(workingDirectory, paths, message, identity, ct));
+        }
+
+        /// <inheritdoc/>
+        public LoreCommandResult AbortMerge(string workingDirectory)
+        {
+            InvalidateCache();
+            return Invoke((proxy, ct) => proxy.AbortMergeAsync(workingDirectory, ct));
+        }
+
+        /// <inheritdoc/>
         public LoreCommandResult CreateRepository(string workingDirectory, string repositoryUrl, string identity)
         {
             InvalidateCache();
