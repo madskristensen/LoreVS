@@ -16,6 +16,13 @@
           <ButtonText>Lore</ButtonText>
         </Strings>
       </Menu>
+      <!-- The same "Lore" flyout hosted on item/project node context menus. -->
+      <Menu guid="LoreVS" id="LoreFileSubMenu" priority="0x0700" type="Menu">
+        <Parent guid="LoreVS" id="LoreFileContextGroup"/>
+        <Strings>
+          <ButtonText>Lore</ButtonText>
+        </Strings>
+      </Menu>
       <!-- Toolbar hosted at the top of the Lore Changes tool window. -->
       <Menu guid="LoreVS" id="LoreChangesToolbar" type="ToolWindowToolbar">
         <CommandFlag>DefaultDocked</CommandFlag>
@@ -34,9 +41,13 @@
       <Group guid="LoreVS" id="MyMenuGroup" priority="0x0600">
         <Parent guid="LoreVS" id="LoreSubMenu"/>
       </Group>
-      <!-- Per-file commands, shown in the Lore submenu and directly on item/project nodes. -->
+      <!-- Per-file commands group; shown in both Lore submenus via placements. -->
       <Group guid="LoreVS" id="LoreFileGroup" priority="0x0700">
         <Parent guid="LoreVS" id="LoreSubMenu"/>
+      </Group>
+      <!-- Anchor group carrying the Lore flyout on item/project node menus. -->
+      <Group guid="LoreVS" id="LoreFileContextGroup" priority="0x0700">
+        <Parent guid="guidSHLMainMenu" id="IDM_VS_CTXT_ITEMNODE"/>
       </Group>
       <!-- Group on the Lore Changes tool window toolbar that holds its buttons. -->
       <Group guid="LoreVS" id="LoreChangesToolbarGroup" priority="0x0000">
@@ -131,11 +142,11 @@
     <CommandPlacement guid="LoreVS" id="LoreContextGroup" priority="0x0600">
       <Parent guid="guidWorkspaceExplorerToolWindowPackageCmdSet" id="idmWSE_ContextMenu"/>
     </CommandPlacement>
-    <!-- Surface the per-file commands directly on solution item and project node menus. -->
+    <!-- Carry the file commands inside the item-node Lore flyout, and host that flyout on project nodes too. -->
     <CommandPlacement guid="LoreVS" id="LoreFileGroup" priority="0x0700">
-      <Parent guid="guidSHLMainMenu" id="IDM_VS_CTXT_ITEMNODE"/>
+      <Parent guid="LoreVS" id="LoreFileSubMenu"/>
     </CommandPlacement>
-    <CommandPlacement guid="LoreVS" id="LoreFileGroup" priority="0x0700">
+    <CommandPlacement guid="LoreVS" id="LoreFileContextGroup" priority="0x0700">
       <Parent guid="guidSHLMainMenu" id="IDM_VS_CTXT_PROJNODE"/>
     </CommandPlacement>
   </CommandPlacements>
@@ -150,6 +161,8 @@
       <IDSymbol name="AddToLoreCommand" value="0x0101" />
       <IDSymbol name="CommitToLoreCommand" value="0x0102" />
       <IDSymbol name="LoreFileGroup" value="0x0006" />
+      <IDSymbol name="LoreFileContextGroup" value="0x0007" />
+      <IDSymbol name="LoreFileSubMenu" value="0x0008" />
       <IDSymbol name="IgnoreAndUntrackCommand" value="0x010B" />
       <IDSymbol name="UndoChangesCommand" value="0x010C" />
       <IDSymbol name="CompareUnmodifiedCommand" value="0x010D" />

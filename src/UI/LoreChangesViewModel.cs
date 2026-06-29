@@ -440,7 +440,7 @@ namespace LoreVS.UI
             {
                 string root = _repositoryRoot;
                 ILoreClient client = _client;
-                string[] paths = items.Select(i => i.RelativePath.Replace('\\', '/')).ToArray();
+                string[] paths = items.Select(i => i.FullPath).ToArray();
 
                 LoreCommandResult result = await Task.Run(() => client.ResetFiles(root, paths));
                 await LoreLog.WriteCommandAsync("file reset", result.CombinedText);

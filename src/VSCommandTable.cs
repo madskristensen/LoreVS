@@ -27,6 +27,8 @@ namespace LoreVS
     {
         public const int MyMenuGroup = 0x0001;
         public const int LoreFileGroup = 0x0006;
+        public const int LoreFileContextGroup = 0x0007;
+        public const int LoreFileSubMenu = 0x0008;
         public const int LoreContextGroup = 0x0002;
         public const int LoreSubMenu = 0x0003;
         public const int LoreChangesToolbar = 0x0004;

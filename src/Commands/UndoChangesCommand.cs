@@ -34,6 +34,7 @@ namespace LoreVS.Commands
 
             string? root = null;
             var paths = new List<string>();
+            var fullPaths = new List<string>();
             foreach (SolutionItem item in items)
             {
                 string fullPath = item?.FullPath ?? string.Empty;
@@ -48,6 +49,7 @@ namespace LoreVS.Commands
                     continue;
                 }
 
+                fullPaths.Add(fullPath);
                 paths.Add(fullPath.Substring(root.Length).TrimStart('\\', '/').Replace('\\', '/'));
             }
 
@@ -64,8 +66,19 @@ namespace LoreVS.Commands
                 return;
             }
 
+            // Close any open editors first so the reset can rewrite the files on disk; a still-open,
+            // modified buffer blocks the write and keeps the file looking modified.
+            var reopen = new List<string>();
+            foreach (string fullPath in fullPaths)
+            {
+                if (await CloseIfOpenAsync(fullPath))
+                {
+                    reopen.Add(fullPath);
+                }
+            }
+
             await VS.StatusBar.ShowMessageAsync("Undoing changes...");
-            LoreCommandResult result = await Task.Run(() => client.ResetFiles(root, paths.ToArray()));
+            LoreCommandResult result = await Task.Run(() => client.ResetFiles(root, fullPaths.ToArray()));
             await LoreLog.WriteCommandAsync("file reset", result.CombinedText);
 
             if (!result.Success)
@@ -74,8 +87,40 @@ namespace LoreVS.Commands
                 return;
             }
 
+            foreach (string fullPath in reopen)
+            {
+                await VS.Documents.OpenAsync(fullPath);
+            }
+
             package.SccService?.RefreshAllGlyphs();
             await VS.StatusBar.ShowMessageAsync("Changes undone.");
+        }
+
+        /// <summary>
+        /// Closes the open document for <paramref name="fullPath"/> without saving so the reset can
+        /// rewrite it on disk. Returns true when a document was closed (and should be reopened).
+        /// </summary>
+        private static async Task<bool> CloseIfOpenAsync(string fullPath)
+        {
+            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+            try
+            {
+                EnvDTE.DTE dte = await VS.GetRequiredServiceAsync<EnvDTE.DTE, EnvDTE.DTE>();
+                foreach (EnvDTE.Document doc in dte.Documents)
+                {
+                    if (string.Equals(doc.FullName, fullPath, StringComparison.OrdinalIgnoreCase))
+                    {
+                        doc.Close(EnvDTE.vsSaveChanges.vsSaveChangesNo);
+                        return true;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                await ex.LogAsync();
+            }
+
+            return false;
         }
     }
 }
