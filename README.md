@@ -31,15 +31,13 @@ Once a solution is controlled, Visual Studio shows Lore status glyphs next to
 files in Solution Explorer. Saving a document refreshes its glyph automatically,
 and you can force a refresh any time with **Lore > Refresh Lore Status**.
 
-## Commit from the IDE
-
-Choose **Lore > Commit to Lore...**, enter a message, and Lore records the
-change. Enable **Push after commit** in the options to automatically push every
-successful commit to the remote.
+Right-click a file under **Lore** for **Undo Changes** (revert edits to the
+committed version), **Compare with Unmodified** (diff against the committed
+version), and **Ignore and Untrack Item** (adds it to `.loreignore`).
 
 ## Review and commit in the Lore Changes window
 
-Open **Lore > Lore Changes** for a dedicated panel, similar to the built-in Git
+Choose **Lore > Commit to Lore...** to open a dedicated panel, similar to the built-in Git
 Changes window. The window shows the current branch with incoming/outgoing
 indicators and arranges every changed file in a folder tree back to the
 repository root, each file showing a status badge (M, A, D, C) on the right.

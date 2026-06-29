@@ -63,5 +63,41 @@ namespace LoreVS.SourceControl
                 return false;
             }
         }
+
+        /// <summary>
+        /// Appends each of <paramref name="patterns"/> to the .loreignore at
+        /// <paramref name="repositoryRoot"/> (creating the file when missing), skipping
+        /// patterns that already exist. Returns true when the file was changed.
+        /// </summary>
+        public static bool AddPatterns(string repositoryRoot, params string[] patterns)
+        {
+            if (string.IsNullOrEmpty(repositoryRoot) || !Directory.Exists(repositoryRoot) || patterns == null)
+            {
+                return false;
+            }
+
+            string path = Path.Combine(repositoryRoot, FileName);
+            var existing = new System.Collections.Generic.HashSet<string>(
+                File.Exists(path) ? File.ReadAllLines(path) : Array.Empty<string>(),
+                StringComparer.OrdinalIgnoreCase);
+
+            var toAdd = new System.Collections.Generic.List<string>();
+            foreach (string pattern in patterns)
+            {
+                if (!string.IsNullOrWhiteSpace(pattern) && existing.Add(pattern))
+                {
+                    toAdd.Add(pattern);
+                }
+            }
+
+            if (toAdd.Count == 0)
+            {
+                return false;
+            }
+
+            File.AppendAllText(path, string.Join(Environment.NewLine, toAdd) + Environment.NewLine,
+                new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+            return true;
+        }
     }
 }

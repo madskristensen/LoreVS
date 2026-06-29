@@ -305,7 +305,7 @@ namespace LoreVS.SourceControl
                 case LoreFileStatus.Unchanged:
                     return VsStateIcon.STATEICON_CHECKEDIN;
                 case LoreFileStatus.Modified:
-                    return VsStateIcon.STATEICON_EDITABLE;
+                    return VsStateIcon.STATEICON_CHECKEDOUT;
                 case LoreFileStatus.Added:
                     return VsStateIcon.STATEICON_CHECKEDOUT;
                 case LoreFileStatus.Deleted:

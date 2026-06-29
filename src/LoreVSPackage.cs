@@ -55,6 +55,12 @@ namespace LoreVS
         /// <summary>The active Lore SCC provider service, available once the package has loaded.</summary>
         internal LoreSccService SccService => _sccService;
 
+        /// <summary>
+        /// True when the open solution/folder is under Lore source control (a <c>.lore</c>
+        /// repository was detected and bound). Used to gate command visibility.
+        /// </summary>
+        internal bool IsSolutionControlled => _controlledRoot != null;
+
         /// <summary>The Lore client (the out-of-process worker / SDK) backing the SCC provider.</summary>
         internal ILoreClient Client => _sccService.Client;
 
@@ -156,18 +162,6 @@ namespace LoreVS
         internal void OnActiveStateChange(LoreSccService service)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
-
-            if (GetService(typeof(IMenuCommandService)) is OleMenuCommandService mcs)
-            {
-                var id = new CommandID(PackageGuids.LoreVS, PackageIds.MyCommand);
-                MenuCommand command = mcs.FindCommand(id);
-                if (command != null)
-                {
-                    command.Supported = true;
-                    command.Enabled = service.Active;
-                    command.Visible = service.Active;
-                }
-            }
 
             if (service.Active)
             {

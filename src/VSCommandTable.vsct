@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <CommandTable xmlns="http://schemas.microsoft.com/VisualStudio/2005-10-18/CommandTable" xmlns:xs="http://www.w3.org/2001/XMLSchema">
 
   <Extern href="stdidcmd.h"/>
@@ -34,6 +34,10 @@
       <Group guid="LoreVS" id="MyMenuGroup" priority="0x0600">
         <Parent guid="LoreVS" id="LoreSubMenu"/>
       </Group>
+      <!-- Per-file commands, shown in the Lore submenu and directly on item/project nodes. -->
+      <Group guid="LoreVS" id="LoreFileGroup" priority="0x0700">
+        <Parent guid="LoreVS" id="LoreSubMenu"/>
+      </Group>
       <!-- Group on the Lore Changes tool window toolbar that holds its buttons. -->
       <Group guid="LoreVS" id="LoreChangesToolbarGroup" priority="0x0000">
         <Parent guid="LoreVS" id="LoreChangesToolbar"/>
@@ -52,15 +56,6 @@
           <LocCanonicalName>.LoreVS.AddToLoreSourceControl</LocCanonicalName>
         </Strings>
       </Button>
-      <Button guid="LoreVS" id="OpenLoreChangesCommand" priority="0x0105" type="Button">
-        <Parent guid="LoreVS" id="MyMenuGroup" />
-        <Icon guid="ImageCatalogGuid" id="Changeset" />
-        <CommandFlag>IconIsMoniker</CommandFlag>
-        <Strings>
-          <ButtonText>Lore Changes</ButtonText>
-          <LocCanonicalName>.LoreVS.LoreChanges</LocCanonicalName>
-        </Strings>
-      </Button>
       <Button guid="LoreVS" id="CommitToLoreCommand" priority="0x0110" type="Button">
         <Parent guid="LoreVS" id="MyMenuGroup" />
         <Icon guid="ImageCatalogGuid" id="SaveAll" />
@@ -70,13 +65,31 @@
           <LocCanonicalName>.LoreVS.CommitToLore</LocCanonicalName>
         </Strings>
       </Button>
-      <Button guid="LoreVS" id="MyCommand" priority="0x0120" type="Button">
-        <Parent guid="LoreVS" id="MyMenuGroup" />
-        <Icon guid="ImageCatalogGuid" id="StatusInformation" />
+      <Button guid="LoreVS" id="IgnoreAndUntrackCommand" priority="0x0115" type="Button">
+        <Parent guid="LoreVS" id="LoreFileGroup" />
+        <Icon guid="ImageCatalogGuid" id="HideMember" />
         <CommandFlag>IconIsMoniker</CommandFlag>
         <Strings>
-          <ButtonText>Refresh Lore Status</ButtonText>
-          <LocCanonicalName>.LoreVS.RefreshLoreStatus</LocCanonicalName>
+          <ButtonText>Ignore and Untrack Item</ButtonText>
+          <LocCanonicalName>.LoreVS.IgnoreAndUntrackItem</LocCanonicalName>
+        </Strings>
+      </Button>
+      <Button guid="LoreVS" id="UndoChangesCommand" priority="0x0118" type="Button">
+        <Parent guid="LoreVS" id="LoreFileGroup" />
+        <Icon guid="ImageCatalogGuid" id="Undo" />
+        <CommandFlag>IconIsMoniker</CommandFlag>
+        <Strings>
+          <ButtonText>Undo Changes</ButtonText>
+          <LocCanonicalName>.LoreVS.UndoChanges</LocCanonicalName>
+        </Strings>
+      </Button>
+      <Button guid="LoreVS" id="CompareUnmodifiedCommand" priority="0x0119" type="Button">
+        <Parent guid="LoreVS" id="LoreFileGroup" />
+        <Icon guid="ImageCatalogGuid" id="CompareFiles" />
+        <CommandFlag>IconIsMoniker</CommandFlag>
+        <Strings>
+          <ButtonText>Compare with Unmodified</ButtonText>
+          <LocCanonicalName>.LoreVS.CompareWithUnmodified</LocCanonicalName>
         </Strings>
       </Button>
 
@@ -118,6 +131,13 @@
     <CommandPlacement guid="LoreVS" id="LoreContextGroup" priority="0x0600">
       <Parent guid="guidWorkspaceExplorerToolWindowPackageCmdSet" id="idmWSE_ContextMenu"/>
     </CommandPlacement>
+    <!-- Surface the per-file commands directly on solution item and project node menus. -->
+    <CommandPlacement guid="LoreVS" id="LoreFileGroup" priority="0x0700">
+      <Parent guid="guidSHLMainMenu" id="IDM_VS_CTXT_ITEMNODE"/>
+    </CommandPlacement>
+    <CommandPlacement guid="LoreVS" id="LoreFileGroup" priority="0x0700">
+      <Parent guid="guidSHLMainMenu" id="IDM_VS_CTXT_PROJNODE"/>
+    </CommandPlacement>
   </CommandPlacements>
 
   <Symbols>
@@ -129,8 +149,10 @@
       <IDSymbol name="LoreChangesToolbarGroup" value="0x0005" />
       <IDSymbol name="AddToLoreCommand" value="0x0101" />
       <IDSymbol name="CommitToLoreCommand" value="0x0102" />
-      <IDSymbol name="MyCommand" value="0x0106" />
-      <IDSymbol name="OpenLoreChangesCommand" value="0x0107" />
+      <IDSymbol name="LoreFileGroup" value="0x0006" />
+      <IDSymbol name="IgnoreAndUntrackCommand" value="0x010B" />
+      <IDSymbol name="UndoChangesCommand" value="0x010C" />
+      <IDSymbol name="CompareUnmodifiedCommand" value="0x010D" />
       <IDSymbol name="PullCommand" value="0x0108" />
       <IDSymbol name="PushCommand" value="0x0109" />
       <IDSymbol name="RefreshChangesCommand" value="0x010A" />
