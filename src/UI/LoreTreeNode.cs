@@ -19,6 +19,7 @@ namespace LoreVS.UI
         private const double IndentPerLevel = 16d;
 
         private bool _isExpanded = true;
+        private bool _isChecked = true;
         private ImageMoniker _fileIcon;
 
         public LoreTreeNode(string name, bool isFolder)
@@ -28,6 +29,17 @@ namespace LoreVS.UI
         }
 
         public event PropertyChangedEventHandler? PropertyChanged;
+
+        /// <summary>
+        /// Raised when a file leaf's <see cref="IsChecked"/> state changes (whether toggled directly
+        /// or via a folder/select-all gesture). Folders never raise it themselves; they propagate the
+        /// change down to their file leaves, which each raise it. The Lore Changes view model uses it
+        /// to recompute the selected-file count and the excluded-paths set.
+        /// </summary>
+        public event EventHandler? CheckedChanged;
+
+        /// <summary>The parent node, or null for root-level nodes. Set while the tree is built.</summary>
+        public LoreTreeNode? Parent { get; set; }
 
         /// <summary>Display name: the folder segment, or the file name for a leaf.</summary>
         public string Name { get; }
@@ -62,6 +74,103 @@ namespace LoreVS.UI
 
         /// <summary>Left indentation for this row, growing one step per nesting level.</summary>
         public Thickness RowMargin => new Thickness(Depth * IndentPerLevel, 0, 0, 0);
+
+        /// <summary>
+        /// Whether this row is selected to be included in the next commit. For a file leaf it is a
+        /// plain checked/unchecked flag. For a folder it is the aggregate of its descendant files:
+        /// <see langword="true"/> when all are checked, <see langword="false"/> when none are, and
+        /// <see langword="null"/> (indeterminate) when mixed. Setting a folder applies the value to
+        /// every descendant file.
+        /// </summary>
+        public bool? IsChecked
+        {
+            get
+            {
+                if (!IsFolder)
+                {
+                    return _isChecked;
+                }
+
+                bool? state = null;
+                bool first = true;
+                foreach (LoreTreeNode leaf in EnumerateFileLeaves())
+                {
+                    if (first)
+                    {
+                        state = leaf._isChecked;
+                        first = false;
+                    }
+                    else if (leaf._isChecked != state)
+                    {
+                        return null;
+                    }
+                }
+
+                return state;
+            }
+            set
+            {
+                bool target = value ?? false;
+                if (IsFolder)
+                {
+                    foreach (LoreTreeNode leaf in EnumerateFileLeaves())
+                    {
+                        leaf.SetCheckedInternal(target);
+                    }
+                }
+                else
+                {
+                    SetCheckedInternal(target);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Sets the initial checked state of a file leaf without raising <see cref="CheckedChanged"/>,
+        /// used when (re)building the tree so applying the persisted selection does not feed back into
+        /// the view model's change handler.
+        /// </summary>
+        public void InitializeChecked(bool isChecked) => _isChecked = isChecked;
+
+        /// <summary>Enumerates every file leaf at or beneath this node (the node itself when it is a leaf).</summary>
+        public IEnumerable<LoreTreeNode> EnumerateFileLeaves()
+        {
+            if (!IsFolder)
+            {
+                if (File != null)
+                {
+                    yield return this;
+                }
+
+                yield break;
+            }
+
+            foreach (LoreTreeNode child in Children)
+            {
+                foreach (LoreTreeNode leaf in child.EnumerateFileLeaves())
+                {
+                    yield return leaf;
+                }
+            }
+        }
+
+        private void SetCheckedInternal(bool value)
+        {
+            if (_isChecked == value)
+            {
+                return;
+            }
+
+            _isChecked = value;
+            OnPropertyChanged(nameof(IsChecked));
+            CheckedChanged?.Invoke(this, EventArgs.Empty);
+
+            // The aggregate checkbox of every ancestor folder may now read differently.
+            for (LoreTreeNode? ancestor = Parent; ancestor != null; ancestor = ancestor.Parent)
+            {
+                ancestor.OnPropertyChanged(nameof(IsChecked));
+            }
+        }
 
         /// <summary>The expand/collapse chevron for folders; empty for files.</summary>
         public string ExpanderGlyph => !IsFolder ? string.Empty : (IsExpanded ? "\u25BE" : "\u25B8");
@@ -197,6 +306,7 @@ namespace LoreVS.UI
             node.Children.Sort(CompareNodes);
             foreach (LoreTreeNode child in node.Children)
             {
+                child.Parent = depth < 0 ? null : node;
                 SortAndAssignDepth(child, depth + 1);
             }
         }

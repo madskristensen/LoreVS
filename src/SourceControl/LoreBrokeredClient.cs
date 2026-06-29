@@ -385,6 +385,13 @@ namespace LoreVS.SourceControl
         }
 
         /// <inheritdoc/>
+        public LoreCommandResult CommitFiles(string workingDirectory, string[] paths, string message, string identity, bool amend)
+        {
+            InvalidateCache();
+            return Invoke((proxy, ct) => proxy.CommitFilesAsync(workingDirectory, paths, message, identity, amend, ct));
+        }
+
+        /// <inheritdoc/>
         public LoreCommandResult Push(string workingDirectory)
         {
             InvalidateCache();

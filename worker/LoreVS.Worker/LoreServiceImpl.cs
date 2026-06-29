@@ -335,6 +335,47 @@ namespace LoreVS.Worker
         }
 
         /// <inheritdoc/>
+        public Task<LoreCommandResult> CommitFilesAsync(string workingDirectory, string[] paths, string message, string identity, bool amend, CancellationToken cancellationToken)
+        {
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                return Task.FromResult(LoreCommandResult.Failed("A commit message is required."));
+            }
+
+            if (paths == null || paths.Length == 0)
+            {
+                return Task.FromResult(LoreCommandResult.Failed("Select at least one file to commit."));
+            }
+
+            return ExecuteAsync(identity, offline: true, workingDirectory, globalArgs =>
+            {
+                // Reset the staging area first so the revision contains exactly the selected files,
+                // independent of whatever happened to be staged before (e.g. a prior partial stage or
+                // a stage left behind by the CLI).
+                using (var unstageArgs = new LoreFileUnstageArgs { Paths = new[] { workingDirectory } })
+                {
+                    Lore.FileUnstage(globalArgs, unstageArgs).Wait();
+                }
+
+                using (var stageArgs = new LoreFileStageArgs { Paths = paths, Scan = true })
+                {
+                    Lore.FileStage(globalArgs, stageArgs).Wait();
+                }
+
+                if (amend)
+                {
+                    using var amendArgs = new LoreRevisionAmendArgs { Message = message };
+                    Lore.RevisionAmend(globalArgs, amendArgs).Wait();
+                }
+                else
+                {
+                    using var commitArgs = new LoreRevisionCommitArgs { Message = message };
+                    Lore.RevisionCommit(globalArgs, commitArgs).Wait();
+                }
+            });
+        }
+
+        /// <inheritdoc/>
         public async Task<LoreBranchEntry[]> ListBranchesAsync(string repositoryRoot, CancellationToken cancellationToken)
         {
             if (string.IsNullOrEmpty(repositoryRoot))

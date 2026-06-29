@@ -42,6 +42,16 @@ namespace LoreVS.UI
         private bool _isBusy;
         private string _statusText = string.Empty;
         private List<LoreTreeNode> _treeRoots = new List<LoreTreeNode>();
+        private int _selectedFileCount;
+
+        /// <summary>
+        /// Absolute paths of files the user has explicitly unchecked (excluded from the next commit).
+        /// Kept across refreshes - including the implicit refresh after a document save - so a manual
+        /// selection is not lost while the user is still composing a partial commit.
+        /// </summary>
+        private readonly HashSet<string> _excludedPaths =
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
         private IVsImageService2? _imageService;
         private readonly Dictionary<string, ImageMoniker> _fileIconCache =
             new Dictionary<string, ImageMoniker>(StringComparer.OrdinalIgnoreCase);
@@ -67,7 +77,7 @@ namespace LoreVS.UI
         public bool HasRepository
         {
             get => _hasRepository;
-            private set { if (SetProperty(ref _hasRepository, value)) { OnPropertyChanged(nameof(CanInteract)); } }
+            private set { if (SetProperty(ref _hasRepository, value)) { OnPropertyChanged(nameof(CanInteract)); OnPropertyChanged(nameof(CanCommit)); } }
         }
 
         /// <summary>Current branch description (e.g. <c>main</c> or <c>main (no remote)</c>).</summary>
@@ -111,7 +121,7 @@ namespace LoreVS.UI
         public bool IsBusy
         {
             get => _isBusy;
-            private set { if (SetProperty(ref _isBusy, value)) { OnPropertyChanged(nameof(CanInteract)); } }
+            private set { if (SetProperty(ref _isBusy, value)) { OnPropertyChanged(nameof(CanInteract)); OnPropertyChanged(nameof(CanCommit)); } }
         }
 
         /// <summary>Status line shown at the bottom of the window.</summary>
@@ -123,6 +133,60 @@ namespace LoreVS.UI
 
         /// <summary>True when the window is bound to a repository and idle.</summary>
         public bool CanInteract => HasRepository && !IsBusy;
+
+        /// <summary>Number of changed files currently checked for commit.</summary>
+        public int SelectedFileCount
+        {
+            get => _selectedFileCount;
+            private set
+            {
+                if (SetProperty(ref _selectedFileCount, value))
+                {
+                    OnPropertyChanged(nameof(CanCommit));
+                    OnPropertyChanged(nameof(CommitCaption));
+                    OnPropertyChanged(nameof(CommitAndPushCaption));
+                    OnPropertyChanged(nameof(AllSelected));
+                }
+            }
+        }
+
+        /// <summary>True when at least one file is checked and the window is interactive.</summary>
+        public bool CanCommit => CanInteract && SelectedFileCount > 0;
+
+        /// <summary>
+        /// Tri-state master selection bound to the header checkbox: <see langword="true"/> when every
+        /// changed file is checked, <see langword="false"/> when none are, <see langword="null"/> when
+        /// the selection is mixed. Setting it checks or unchecks every file.
+        /// </summary>
+        public bool? AllSelected
+        {
+            get
+            {
+                int total = Changes.Count;
+                if (total == 0 || SelectedFileCount == 0)
+                {
+                    return false;
+                }
+
+                return SelectedFileCount == total ? true : (bool?)null;
+            }
+            set
+            {
+                bool target = value ?? false;
+                foreach (LoreTreeNode leaf in EnumerateLeaves())
+                {
+                    leaf.IsChecked = target;
+                }
+            }
+        }
+
+        /// <summary>Caption for the commit button: "Commit All" when nothing is excluded, else the count.</summary>
+        public string CommitCaption => IsPartialSelection ? $"Commit {SelectedFileCount}" : "Commit All";
+
+        /// <summary>Caption for the commit-and-push button, mirroring <see cref="CommitCaption"/>.</summary>
+        public string CommitAndPushCaption => IsPartialSelection ? $"Commit {SelectedFileCount} and Push" : "Commit All and Push";
+
+        private bool IsPartialSelection => Changes.Count > 0 && SelectedFileCount > 0 && SelectedFileCount < Changes.Count;
 
         /// <summary>The repository root bound to this window, or null.</summary>
         public string? RepositoryRoot => _repositoryRoot;
@@ -220,6 +284,8 @@ namespace LoreVS.UI
                 Changes.Clear();
                 _treeRoots = new List<LoreTreeNode>();
                 Nodes.Clear();
+                _excludedPaths.Clear();
+                SelectedFileCount = 0;
                 BranchText = string.Empty;
                 _currentBranchName = string.Empty;
                 _cachedBranches = Array.Empty<LoreBranchEntry>();
@@ -312,6 +378,7 @@ namespace LoreVS.UI
                 }
 
                 _treeRoots = LoreTreeNode.BuildTree(Changes, ResolveFileIcon);
+                ApplySelectionToTree();
                 RebuildVisibleNodes();
 
                 StatusText = Changes.Count == 0
@@ -391,8 +458,92 @@ namespace LoreVS.UI
         }
 
         /// <summary>
-        /// Stages all changes and commits them with the current message (optionally pushing). When
-        /// <see cref="Amend"/> is set the latest revision is amended instead.
+        /// Applies the persisted commit selection to a freshly built tree: prunes excluded paths that
+        /// are no longer changed, checks each file leaf unless it was explicitly excluded, subscribes
+        /// to its check changes, and recomputes the selected count. Runs on the UI thread.
+        /// </summary>
+        private void ApplySelectionToTree()
+        {
+            var current = new HashSet<string>(
+                Changes.Select(c => c.FullPath), StringComparer.OrdinalIgnoreCase);
+            _excludedPaths.RemoveWhere(p => !current.Contains(p));
+
+            foreach (LoreTreeNode leaf in EnumerateLeaves())
+            {
+                bool isChecked = leaf.File == null || !_excludedPaths.Contains(leaf.File.FullPath);
+                leaf.InitializeChecked(isChecked);
+
+                // Re-subscription is idempotent: detach first so a node reused across refreshes is
+                // never wired twice (BuildTree makes new nodes today, but this stays correct either way).
+                leaf.CheckedChanged -= OnNodeCheckedChanged;
+                leaf.CheckedChanged += OnNodeCheckedChanged;
+            }
+
+            RecountSelection();
+        }
+
+        private void OnNodeCheckedChanged(object? sender, EventArgs e)
+        {
+            if (sender is LoreTreeNode node && node.File != null)
+            {
+                if (node.IsChecked == true)
+                {
+                    _excludedPaths.Remove(node.File.FullPath);
+                }
+                else
+                {
+                    _excludedPaths.Add(node.File.FullPath);
+                }
+            }
+
+            RecountSelection();
+        }
+
+        private void RecountSelection()
+        {
+            int count = 0;
+            foreach (LoreTreeNode leaf in EnumerateLeaves())
+            {
+                if (leaf.IsChecked == true)
+                {
+                    count++;
+                }
+            }
+
+            SelectedFileCount = count;
+
+            // The captions and the master checkbox also depend on Changes.Count, which can shift while
+            // the selected count stays the same (e.g. an unchecked file gets committed elsewhere), so
+            // refresh them unconditionally rather than relying on the count value changing.
+            OnPropertyChanged(nameof(CanCommit));
+            OnPropertyChanged(nameof(CommitCaption));
+            OnPropertyChanged(nameof(CommitAndPushCaption));
+            OnPropertyChanged(nameof(AllSelected));
+        }
+
+        /// <summary>Enumerates every file-leaf node across the current change tree.</summary>
+        private IEnumerable<LoreTreeNode> EnumerateLeaves()
+        {
+            foreach (LoreTreeNode root in _treeRoots)
+            {
+                foreach (LoreTreeNode leaf in root.EnumerateFileLeaves())
+                {
+                    yield return leaf;
+                }
+            }
+        }
+
+        /// <summary>Absolute paths of the files currently checked for commit.</summary>
+        private string[] GetSelectedFilePaths() =>
+            EnumerateLeaves()
+                .Where(n => n.IsChecked == true && n.File != null)
+                .Select(n => n.File!.FullPath)
+                .ToArray();
+
+        /// <summary>
+        /// Commits the files currently checked in the change list with the current message (optionally
+        /// pushing). When <see cref="Amend"/> is set the latest revision is amended instead. The worker
+        /// resets the staging area first, so the revision contains exactly the selected files.
         /// </summary>
         public async Task CommitAsync(bool push)
         {
@@ -408,6 +559,13 @@ namespace LoreVS.UI
                 return;
             }
 
+            string[] paths = GetSelectedFilePaths();
+            if (paths.Length == 0)
+            {
+                await VS.MessageBox.ShowWarningAsync("Lore", "Select at least one file to commit.");
+                return;
+            }
+
             if (!await EnsureAvailableAsync())
             {
                 return;
@@ -420,23 +578,11 @@ namespace LoreVS.UI
                 ILoreClient client = _client!;
                 string identity = _identity;
 
-                LoreCommandResult result = await Task.Run(() =>
-                {
-                    if (!amend)
-                    {
-                        LoreCommandResult stage = client.StageAll(root);
-                        if (!stage.Success)
-                        {
-                            return stage;
-                        }
-                    }
+                LoreCommandResult result = await Task.Run(() => client.CommitFiles(root, paths, message, identity, amend));
 
-                    return amend
-                        ? client.Amend(root, message, identity)
-                        : client.Commit(root, message, identity);
-                });
-
-                await LoreLog.WriteCommandAsync(amend ? $"revision amend \"{message}\"" : $"commit \"{message}\"", result.CombinedText);
+                await LoreLog.WriteCommandAsync(
+                    amend ? $"revision amend ({paths.Length} file(s)) \"{message}\"" : $"commit ({paths.Length} file(s)) \"{message}\"",
+                    result.CombinedText);
 
                 if (!result.Success)
                 {

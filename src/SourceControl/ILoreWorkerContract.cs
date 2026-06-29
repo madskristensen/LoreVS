@@ -63,6 +63,15 @@ namespace LoreVS.SourceControl
         Task<LoreCommandResult> AmendAsync(string workingDirectory, string message, string identity, CancellationToken cancellationToken);
 
         /// <summary>
+        /// Commits (or amends, when <paramref name="amend"/> is set) only the supplied
+        /// <paramref name="paths"/>. The staging area is reset first so the revision contains exactly
+        /// the selected files regardless of what was staged before (equivalent to
+        /// <c>lore unstage</c> + <c>lore stage &lt;paths&gt;</c> + <c>lore commit</c>). Enables partial
+        /// commits from the Lore Changes window.
+        /// </summary>
+        Task<LoreCommandResult> CommitFilesAsync(string workingDirectory, string[] paths, string message, string identity, bool amend, CancellationToken cancellationToken);
+
+        /// <summary>
         /// Returns every branch in the repository at <paramref name="repositoryRoot"/> (local and
         /// remote), with the active branch flagged. Runs offline.
         /// </summary>

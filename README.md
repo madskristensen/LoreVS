@@ -64,9 +64,16 @@ indicators and arranges every changed file in a folder tree back to the
 repository root, each file showing a status badge (M, A, D, C) on the right.
 From here you can:
 
+- Pick exactly which files to include in the next commit. Every changed file
+  has a checkbox (checked by default) and each folder has a tri-state checkbox
+  that selects or clears all the files beneath it; the header checkbox toggles
+  everything at once. Your selection is remembered across automatic refreshes
+  while you compose the commit.
 - Write a commit message and **Commit All**, or **Commit All and Push** in one
-  step. Tick **Amend latest revision** to fold the changes into the previous
-  revision instead.
+  step. When you exclude some files the buttons update to show how many are
+  selected (for example **Commit 2** / **Commit 2 and Push**) and only those
+  files are committed. Tick **Amend latest revision** to fold the selected
+  changes into the previous revision instead.
 - Expand or collapse folders, and double-click a file (or right-click >
   **Open Diff**) to compare the working
   copy against the committed version in the native Visual Studio diff viewer.

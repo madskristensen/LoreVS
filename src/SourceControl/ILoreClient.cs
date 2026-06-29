@@ -117,6 +117,13 @@ namespace LoreVS.SourceControl
         /// </summary>
         LoreCommandResult Amend(string workingDirectory, string message, string identity);
 
+        /// <summary>
+        /// Commits (or amends, when <paramref name="amend"/> is set) only the supplied
+        /// <paramref name="paths"/>. The staging area is reset first so the revision contains exactly
+        /// the selected files, enabling partial commits from the Lore Changes window.
+        /// </summary>
+        LoreCommandResult CommitFiles(string workingDirectory, string[] paths, string message, string identity, bool amend);
+
         /// <summary>Pushes local commits to the remote (equivalent to <c>lore push</c>).</summary>
         LoreCommandResult Push(string workingDirectory);
 

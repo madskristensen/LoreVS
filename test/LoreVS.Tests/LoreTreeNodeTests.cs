@@ -127,5 +127,118 @@ namespace LoreVS.Tests
             Assert.AreEqual(string.Empty, folder.StatusBadge);
             Assert.IsTrue(folder.ExpanderGlyph.Length > 0);
         }
+
+        [TestMethod]
+        public void FileLeaf_DefaultsToChecked()
+        {
+            List<LoreTreeNode> roots = LoreTreeNode.BuildTree(new[]
+            {
+                File(@"src\New.cs"),
+            });
+
+            Assert.AreEqual(true, roots[0].Children.Single().IsChecked);
+        }
+
+        [TestMethod]
+        public void FolderNode_AggregatesDescendantCheckState()
+        {
+            List<LoreTreeNode> roots = LoreTreeNode.BuildTree(new[]
+            {
+                File(@"src\A.cs"),
+                File(@"src\B.cs"),
+            });
+            LoreTreeNode folder = roots[0];
+
+            // All children checked by default -> folder reads true.
+            Assert.AreEqual(true, folder.IsChecked);
+
+            // One child off -> mixed -> indeterminate (null).
+            folder.Children[0].IsChecked = false;
+            Assert.IsNull(folder.IsChecked);
+
+            // Both off -> false.
+            folder.Children[1].IsChecked = false;
+            Assert.AreEqual(false, folder.IsChecked);
+        }
+
+        [TestMethod]
+        public void FolderNode_SettingCheckPropagatesToDescendants()
+        {
+            List<LoreTreeNode> roots = LoreTreeNode.BuildTree(new[]
+            {
+                File(@"src\app\A.cs"),
+                File(@"src\app\B.cs"),
+            });
+            LoreTreeNode src = roots[0];
+
+            src.IsChecked = false;
+            Assert.IsTrue(src.EnumerateFileLeaves().All(f => f.IsChecked == false));
+
+            src.IsChecked = true;
+            Assert.IsTrue(src.EnumerateFileLeaves().All(f => f.IsChecked == true));
+        }
+
+        [TestMethod]
+        public void FileLeaf_CheckChange_RaisesEventAndUpdatesParentDisplay()
+        {
+            List<LoreTreeNode> roots = LoreTreeNode.BuildTree(new[]
+            {
+                File(@"src\A.cs"),
+                File(@"src\B.cs"),
+            });
+            LoreTreeNode folder = roots[0];
+            LoreTreeNode leaf = folder.Children[0];
+
+            int leafEvents = 0;
+            leaf.CheckedChanged += (s, e) => leafEvents++;
+
+            var parentChanged = new List<string?>();
+            folder.PropertyChanged += (s, e) => parentChanged.Add(e.PropertyName);
+
+            leaf.IsChecked = false;
+
+            Assert.AreEqual(1, leafEvents);
+            Assert.IsTrue(parentChanged.Contains(nameof(LoreTreeNode.IsChecked)));
+
+            // Toggling to the same value is a no-op (no extra event).
+            leaf.IsChecked = false;
+            Assert.AreEqual(1, leafEvents);
+        }
+
+        [TestMethod]
+        public void BuildTree_WiresParentPointers()
+        {
+            List<LoreTreeNode> roots = LoreTreeNode.BuildTree(new[]
+            {
+                File(@"src\app\A.cs"),
+            });
+
+            LoreTreeNode src = roots[0];
+            LoreTreeNode app = src.Children.Single();
+            LoreTreeNode leaf = app.Children.Single();
+
+            Assert.IsNull(src.Parent);
+            Assert.AreSame(src, app.Parent);
+            Assert.AreSame(app, leaf.Parent);
+        }
+
+        [TestMethod]
+        public void EnumerateFileLeaves_ReturnsOnlyFiles()
+        {
+            List<LoreTreeNode> roots = LoreTreeNode.BuildTree(new[]
+            {
+                File(@"src\app\A.cs"),
+                File(@"src\B.cs"),
+                File(@"readme.md"),
+            });
+
+            string[] names = roots
+                .SelectMany(r => r.EnumerateFileLeaves())
+                .Select(n => n.Name)
+                .OrderBy(n => n)
+                .ToArray();
+
+            CollectionAssert.AreEqual(new[] { "A.cs", "B.cs", "readme.md" }, names);
+        }
     }
 }

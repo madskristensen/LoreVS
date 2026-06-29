@@ -41,12 +41,12 @@
                           IsEnabled="{Binding CanInteract}" />
 
                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                    <Button x:Name="CommitButton" Content="Commit All"
+                    <Button x:Name="CommitButton" Content="{Binding CommitCaption}"
                             MinWidth="90" Click="OnCommitClick"
-                            IsEnabled="{Binding CanInteract}" />
-                    <Button x:Name="CommitPushButton" Content="Commit All and Push"
+                            IsEnabled="{Binding CanCommit}" />
+                    <Button x:Name="CommitPushButton" Content="{Binding CommitAndPushCaption}"
                             Margin="6,0,0,0" Click="OnCommitAndPushClick"
-                            IsEnabled="{Binding CanInteract}" />
+                            IsEnabled="{Binding CanCommit}" />
                 </StackPanel>
             </StackPanel>
 
@@ -54,9 +54,17 @@
             <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusText}"
                        Margin="0,8,0,0" Opacity="0.8" TextTrimming="CharacterEllipsis" />
 
-            <!-- Changes header -->
-            <TextBlock DockPanel.Dock="Top" Margin="0,0,0,4" FontWeight="Bold"
-                       Text="{Binding Changes.Count, StringFormat=Changes ({0})}" />
+            <!-- Changes header with a master select-all checkbox -->
+            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,4">
+                <CheckBox x:Name="SelectAllCheck"
+                          IsChecked="{Binding AllSelected, Mode=TwoWay}"
+                          IsThreeState="False"
+                          VerticalAlignment="Center"
+                          IsEnabled="{Binding CanInteract}"
+                          ToolTip="Select all files for commit" />
+                <TextBlock FontWeight="Bold" Margin="6,0,0,0" VerticalAlignment="Center"
+                           Text="{Binding Changes.Count, StringFormat=Changes ({0})}" />
+            </StackPanel>
 
             <!-- Changed files as a folder tree -->
             <ListBox x:Name="ChangesList"
@@ -87,25 +95,31 @@
                         <Grid Margin="{Binding RowMargin}" Background="Transparent"
                               ToolTip="{Binding RowToolTip}">
                             <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="16" />
                                 <ColumnDefinition Width="16" />
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0"
+                            <CheckBox Grid.Column="0"
+                                      IsChecked="{Binding IsChecked, Mode=TwoWay}"
+                                      IsThreeState="False"
+                                      VerticalAlignment="Center" Margin="0,0,4,0"
+                                      ToolTip="Include in commit" />
+                            <TextBlock Grid.Column="1"
                                        Text="{Binding ExpanderGlyph}"
                                        Visibility="{Binding ExpanderVisibility}"
                                        MouseLeftButtonUp="OnExpanderClick"
                                        HorizontalAlignment="Center" VerticalAlignment="Center"
                                        FontSize="10" Opacity="0.8" Cursor="Hand" />
-                            <imaging:CrispImage Grid.Column="1"
+                            <imaging:CrispImage Grid.Column="2"
                                                 Moniker="{Binding Icon}"
                                                 Width="16" Height="16"
                                                 VerticalAlignment="Center" />
-                            <TextBlock Grid.Column="2" Text="{Binding Name}"
+                            <TextBlock Grid.Column="3" Text="{Binding Name}"
                                        VerticalAlignment="Center" Margin="4,0,0,0"
                                        TextTrimming="CharacterEllipsis" />
-                            <TextBlock Grid.Column="3" Text="{Binding StatusBadge}"
+                            <TextBlock Grid.Column="4" Text="{Binding StatusBadge}"
                                        HorizontalAlignment="Right"
                                        VerticalAlignment="Center" Margin="8,0,0,0"
                                        ToolTip="{Binding StatusText}" />

@@ -183,6 +183,48 @@ namespace LoreVS.Tests
         }
 
         [TestMethod]
+        public void CommitFiles_CommitsOnlySelectedFiles()
+        {
+            string worker = RequireWorker();
+            string repoPath = Path.Combine(_tempRoot, "repo");
+            SeedRepository(worker, repoPath);
+
+            using var client = new LoreBrokeredClient(worker);
+
+            // The seeded repo has two changes: file.txt (modified) and untracked.txt (added).
+            string modified = Path.GetFullPath(Path.Combine(repoPath, "file.txt"));
+            string added = Path.GetFullPath(Path.Combine(repoPath, "untracked.txt"));
+
+            // Commit only the added file; the modified file must be left as a pending change.
+            LoreCommandResult result = client.CommitFiles(
+                repoPath, new[] { added }, "Add untracked only", "test@lorevs", amend: false);
+            Assert.IsTrue(result.Success, "Partial commit failed: " + result.CombinedText);
+
+            IReadOnlyDictionary<string, LoreFileStatus> status = client.GetRepositoryStatus(repoPath);
+
+            Assert.IsFalse(status.ContainsKey(added),
+                "The committed file should no longer be a pending change.");
+            Assert.IsTrue(status.ContainsKey(modified),
+                "The unselected file should remain a pending change after a partial commit.");
+            Assert.AreEqual(LoreFileStatus.Modified, status[modified]);
+        }
+
+        [TestMethod]
+        public void CommitFiles_NoPaths_ReportsFailure()
+        {
+            string worker = RequireWorker();
+            string repoPath = Path.Combine(_tempRoot, "repo");
+            SeedRepository(worker, repoPath);
+
+            using var client = new LoreBrokeredClient(worker);
+
+            LoreCommandResult result = client.CommitFiles(
+                repoPath, System.Array.Empty<string>(), "Nothing selected", "test@lorevs", amend: false);
+
+            Assert.IsFalse(result.Success, "Committing with no selected files should fail.");
+        }
+
+        [TestMethod]
         public void CreateBranch_MakesNewBranchCurrent()
         {
             string worker = RequireWorker();
