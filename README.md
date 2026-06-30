@@ -84,6 +84,17 @@ From here you can:
 - Use the toolbar to **Pull** (sync the latest remote revisions), **Push**
   committed revisions, or **Refresh** the change list.
 
+## Sign in to a server
+
+Authentication happens automatically, only when it is needed. When a clone,
+push, pull, or server-backed create fails because the Lore server requires
+sign-in (or a saved session has expired), Lore asks whether you want to sign in.
+Confirm and your default browser opens to complete sign-in; when it finishes,
+the original operation is retried. The session is stored by Lore, so later
+operations against the same server do not prompt again. There is no separate
+sign-in command - just run the operation you want, the same way Git prompts
+through its credential manager.
+
 ## Work with branches
 
 Click the branch button (showing the current branch name) on the Lore Changes

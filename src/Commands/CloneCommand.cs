@@ -65,7 +65,9 @@ namespace LoreVS.Commands
 
             General options = await General.GetLiveInstanceAsync();
             await VS.StatusBar.ShowMessageAsync("Cloning Lore repository...");
-            LoreCommandResult result = await Task.Run(() => client.CloneRepository(repositoryUrl, target, options.Identity));
+            LoreCommandResult result = await LoreAuthFlow.ExecuteAsync(
+                client, target, repositoryUrl,
+                () => client.CloneRepository(repositoryUrl, target, options.Identity));
             await LoreLog.WriteCommandAsync($"clone {repositoryUrl}", result.CombinedText);
 
             if (!result.Success)

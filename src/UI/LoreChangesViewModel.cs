@@ -629,7 +629,7 @@ namespace LoreVS.UI
             {
                 string root = _repositoryRoot!;
                 ILoreClient client = _client!;
-                LoreCommandResult result = await Task.Run(() => client.Sync(root));
+                LoreCommandResult result = await LoreAuthFlow.ExecuteAsync(client, root, string.Empty, () => client.Sync(root));
                 await LoreLog.WriteCommandAsync("sync", result.CombinedText);
 
                 if (!result.Success)
@@ -840,7 +840,7 @@ namespace LoreVS.UI
         {
             string root = _repositoryRoot!;
             ILoreClient client = _client!;
-            LoreCommandResult result = await Task.Run(() => client.Push(root));
+            LoreCommandResult result = await LoreAuthFlow.ExecuteAsync(client, root, string.Empty, () => client.Push(root));
             await LoreLog.WriteCommandAsync("push", result.CombinedText);
 
             if (!result.Success)

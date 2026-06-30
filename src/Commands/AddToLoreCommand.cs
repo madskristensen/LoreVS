@@ -95,7 +95,10 @@ namespace LoreVS.Commands
             }
 
             await VS.StatusBar.ShowMessageAsync("Creating Lore repository...");
-            LoreCommandResult result = await Task.Run(() => client.CreateRepository(solutionDir!, url, options.Identity));
+            string authUrl = dialog.IsLocal ? string.Empty : url;
+            LoreCommandResult result = await LoreAuthFlow.ExecuteAsync(
+                client, solutionDir!, authUrl,
+                () => client.CreateRepository(solutionDir!, url, options.Identity));
             await LoreLog.WriteCommandAsync($"repository create {url}", result.CombinedText);
 
             if (!result.Success)

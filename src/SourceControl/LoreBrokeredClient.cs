@@ -47,6 +47,14 @@ namespace LoreVS.SourceControl
         /// </summary>
         private const int StatusCallTimeoutMs = 15000;
 
+        /// <summary>
+        /// Timeout for the interactive sign-in call. Sign-in blocks on a human completing the
+        /// browser-based login, so it gets a much longer budget than ordinary writes. Kept slightly
+        /// above the worker's own login timeout so the worker times the operation out first and
+        /// returns a clean failure rather than tripping this transport-level guard.
+        /// </summary>
+        private const int LoginCallTimeoutMs = 330000;
+
         /// <summary>How long to wait before retrying the worker launch after a transient failure.</summary>
         private static readonly TimeSpan LaunchRetryBackoff = TimeSpan.FromSeconds(5);
 
@@ -361,6 +369,32 @@ namespace LoreVS.SourceControl
         {
             InvalidateCache();
             return Invoke((proxy, ct) => proxy.CloneRepositoryAsync(repositoryUrl, targetDirectory, identity, ct));
+        }
+
+        /// <inheritdoc/>
+        public LoreAuthResult Login(string workingDirectory, string remoteUrl)
+        {
+            ILoreWorkerContract? proxy = GetProxy();
+            if (proxy == null)
+            {
+                return new LoreAuthResult
+                {
+                    Success = false,
+                    ErrorMessage = "The Lore worker could not be started, so sign-in is unavailable.",
+                };
+            }
+
+            try
+            {
+                return Run(
+                    ct => proxy.LoginAsync(workingDirectory ?? string.Empty, remoteUrl ?? string.Empty, ct),
+                    LoginCallTimeoutMs);
+            }
+            catch (Exception ex)
+            {
+                HandleCallFailure(ex);
+                return new LoreAuthResult { Success = false, ErrorMessage = ex.Message };
+            }
         }
 
         /// <inheritdoc/>

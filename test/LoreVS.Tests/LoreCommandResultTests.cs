@@ -66,5 +66,35 @@ namespace LoreVS.Tests
             var result = new LoreCommandResult(true, 0, string.Empty, string.Empty);
             Assert.AreEqual(string.Empty, result.CombinedText);
         }
+
+        [TestMethod]
+        public void RequiresAuthentication_DefaultsToFalse()
+        {
+            var result = new LoreCommandResult(false, 1, string.Empty, "boom");
+            Assert.IsFalse(result.RequiresAuthentication);
+        }
+
+        [TestMethod]
+        public void RequiresAuthentication_IsSettable()
+        {
+            var result = new LoreCommandResult(false, 1, string.Empty, "401 Unauthorized")
+            {
+                RequiresAuthentication = true,
+            };
+
+            Assert.IsTrue(result.RequiresAuthentication);
+        }
+
+        [TestMethod]
+        public void LoreAuthResult_Defaults()
+        {
+            var auth = new LoreAuthResult();
+
+            Assert.IsFalse(auth.Success);
+            Assert.AreEqual(string.Empty, auth.UserId);
+            Assert.AreEqual(string.Empty, auth.UserName);
+            Assert.AreEqual(string.Empty, auth.LoginUrl);
+            Assert.AreEqual(string.Empty, auth.ErrorMessage);
+        }
     }
 }

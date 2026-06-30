@@ -20,6 +20,15 @@ namespace LoreVS.SourceControl
         bool IsAvailable { get; }
 
         /// <summary>
+        /// Authenticates interactively (browser-based) against a Lore server. The worker opens the
+        /// login URL in the user's default browser and blocks until sign-in completes; on success the
+        /// native credential store is updated so subsequent clone/push/pull operations authenticate
+        /// automatically. Pass an explicit <paramref name="remoteUrl"/>, or leave it empty to resolve
+        /// the server from the repository at <paramref name="workingDirectory"/>.
+        /// </summary>
+        LoreAuthResult Login(string workingDirectory, string remoteUrl);
+
+        /// <summary>
         /// Returns the root of the Lore repository that contains <paramref name="path"/>,
         /// walking up the directory tree, or <see langword="null"/> if none is found.
         /// </summary>

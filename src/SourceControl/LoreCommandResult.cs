@@ -26,6 +26,14 @@ namespace LoreVS.SourceControl
         /// <summary>Captured standard error (or a human message when launch failed).</summary>
         public string Error { get; }
 
+        /// <summary>
+        /// True when the operation failed because the Lore server requires authentication (or the
+        /// stored session is missing/expired). Drives the reactive sign-in prompt: the command offers
+        /// to authenticate and then retries. Defaults to false; the worker sets it when it classifies
+        /// a failure as auth-related.
+        /// </summary>
+        public bool RequiresAuthentication { get; set; }
+
         /// <summary>Combined stdout/stderr, trimmed, for display in the output window.</summary>
         public string CombinedText
         {

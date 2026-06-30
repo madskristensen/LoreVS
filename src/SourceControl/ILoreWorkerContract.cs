@@ -21,6 +21,23 @@ namespace LoreVS.SourceControl
         Task<bool> IsAvailableAsync(CancellationToken cancellationToken);
 
         /// <summary>
+        /// Authenticates interactively against a Lore server using the browser-based login flow.
+        /// The worker drives the native SDK with <c>no_browser</c> set, captures the emitted login
+        /// URL, and opens it in the user's default browser; the call then blocks until the user
+        /// completes (or cancels) sign-in. On success the native credential store is updated, so
+        /// subsequent clone/push/pull operations against the same server authenticate automatically.
+        /// </summary>
+        /// <param name="workingDirectory">
+        /// Repository whose remote configuration resolves the server when <paramref name="remoteUrl"/>
+        /// is empty (the reactive push/pull case). May be empty for clone, where no local repo exists.
+        /// </param>
+        /// <param name="remoteUrl">
+        /// Explicit Lore server/repository URL to authenticate against, or empty to resolve it from the
+        /// repository at <paramref name="workingDirectory"/>.
+        /// </param>
+        Task<LoreAuthResult> LoginAsync(string workingDirectory, string remoteUrl, CancellationToken cancellationToken);
+
+        /// <summary>
         /// Returns the status of every changed file under <paramref name="repositoryRoot"/> as
         /// absolute-path / normalized-status pairs. Runs offline (no server required).
         /// </summary>
@@ -132,6 +149,32 @@ namespace LoreVS.SourceControl
         /// on disk. Used to materialize the committed version of a file for diffing.
         /// </summary>
         Task<LoreCommandResult> WriteFileAtRevisionAsync(string workingDirectory, string relativePath, string revision, string outputPath, CancellationToken cancellationToken);
+    }
+
+    /// <summary>
+    /// Outcome of an interactive authentication attempt. The wire shape for
+    /// <see cref="ILoreWorkerContract.LoginAsync"/>; settable members keep it trivially serializable
+    /// by System.Text.Json across the pipe.
+    /// </summary>
+    public sealed class LoreAuthResult
+    {
+        /// <summary>True when sign-in completed and the native credential store was updated.</summary>
+        public bool Success { get; set; }
+
+        /// <summary>The authenticated user's id, when reported by the server.</summary>
+        public string UserId { get; set; } = string.Empty;
+
+        /// <summary>The authenticated user's display name (or preferred username), when reported.</summary>
+        public string UserName { get; set; } = string.Empty;
+
+        /// <summary>
+        /// The browser login URL the worker opened for the user. Returned for logging/fallback so the
+        /// package can surface it if the browser failed to open. Empty once sign-in has completed.
+        /// </summary>
+        public string LoginUrl { get; set; } = string.Empty;
+
+        /// <summary>Error detail when sign-in failed or was cancelled; empty on success.</summary>
+        public string ErrorMessage { get; set; } = string.Empty;
     }
 
     /// <summary>

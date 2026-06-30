@@ -29,6 +29,11 @@ namespace LoreVS.Worker
         // forever, which would freeze Solution Explorer glyphs and the Lore Changes window.
         private const int SdkTimeoutMs = 30000;
 
+        // Interactive sign-in blocks while the user completes the browser-based login, so it gets a
+        // far larger budget than ordinary operations. Five minutes is generous for a human round trip
+        // while still bounding a flow the user abandoned without cancelling.
+        private const int LoginTimeoutMs = 300000;
+
         // Each native SDK call drives its own tokio runtime synchronously, so it must run on a
         // dedicated worker thread and block there with Wait(). Calls are NOT funneled through a
         // shared gate: a single slow/stuck native operation must never be able to stall unrelated
@@ -40,16 +45,26 @@ namespace LoreVS.Worker
         /// </summary>
         private static async Task RunExclusiveAsync(Action action, [CallerMemberName] string operation = "")
         {
+            await RunExclusiveAsync(action, SdkTimeoutMs, operation).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Runs a blocking native SDK action on a dedicated worker thread with an explicit timeout.
+        /// Used by interactive sign-in, which blocks on a human completing the browser login and so
+        /// needs a far larger budget than <see cref="SdkTimeoutMs"/>.
+        /// </summary>
+        private static async Task RunExclusiveAsync(Action action, int timeoutMs, [CallerMemberName] string operation = "")
+        {
             WorkerLog.Write(operation + ": start");
             var sw = Stopwatch.StartNew();
 
             Task work = Task.Run(action);
-            Task finished = await Task.WhenAny(work, Task.Delay(SdkTimeoutMs)).ConfigureAwait(false);
+            Task finished = await Task.WhenAny(work, Task.Delay(timeoutMs)).ConfigureAwait(false);
             if (finished != work)
             {
                 WorkerLog.Write($"{operation}: TIMEOUT after {sw.ElapsedMilliseconds} ms");
                 throw new TimeoutException(
-                    $"The Lore SDK operation '{operation}' did not complete within {SdkTimeoutMs} ms.");
+                    $"The Lore SDK operation '{operation}' did not complete within {timeoutMs} ms.");
             }
 
             try
@@ -70,6 +85,97 @@ namespace LoreVS.Worker
             // Reaching this method means the worker started and the SDK assembly loaded; the only
             // way to be here is for the native lorelib to have resolved, so report availability.
             return Task.FromResult(true);
+        }
+
+        /// <inheritdoc/>
+        public async Task<LoreAuthResult> LoginAsync(string workingDirectory, string remoteUrl, CancellationToken cancellationToken)
+        {
+            var result = new LoreAuthResult();
+            try
+            {
+                // no_browser=true makes the SDK emit the login URL (AUTH_URL) instead of opening a
+                // browser itself; the worker opens it via the shell so the package never has to. The
+                // native call then blocks until the user finishes signing in, hence the long timeout.
+                await RunExclusiveAsync(
+                    () =>
+                    {
+                        var globalArgs = new LoreGlobalArgs { Offline = false };
+                        if (!string.IsNullOrWhiteSpace(workingDirectory))
+                        {
+                            globalArgs.RepositoryPath = workingDirectory;
+                        }
+
+                        try
+                        {
+                            using var args = new LoreAuthLoginInteractiveArgs
+                            {
+                                RemoteUrl = remoteUrl ?? string.Empty,
+                                NoBrowser = true,
+                            };
+
+                            Lore.AuthLoginInteractive(globalArgs, args).Callback((loreEvent, userContext) =>
+                            {
+                                switch (loreEvent.Tag)
+                                {
+                                    case LoreEventTag.AUTH_URL:
+                                        LoreAuthUrlEventDataFFI url = loreEvent.GetData<LoreAuthUrlEventDataFFI>();
+                                        result.LoginUrl = url.Url ?? string.Empty;
+                                        OpenBrowser(result.LoginUrl);
+                                        break;
+                                    case LoreEventTag.AUTH_USER_INFO:
+                                        LoreAuthUserInfoEventDataFFI info = loreEvent.GetData<LoreAuthUserInfoEventDataFFI>();
+                                        result.UserId = info.Id ?? string.Empty;
+                                        result.UserName = info.Name ?? string.Empty;
+                                        break;
+                                    case LoreEventTag.AUTH_USER_TOKEN:
+                                        LoreAuthUserTokenEventDataFFI token = loreEvent.GetData<LoreAuthUserTokenEventDataFFI>();
+                                        if (string.IsNullOrEmpty(result.UserId))
+                                        {
+                                            result.UserId = token.Id ?? string.Empty;
+                                        }
+
+                                        if (string.IsNullOrEmpty(result.UserName))
+                                        {
+                                            result.UserName = !string.IsNullOrEmpty(token.PreferredUsername)
+                                                ? token.PreferredUsername
+                                                : token.Name ?? string.Empty;
+                                        }
+
+                                        break;
+                                    case LoreEventTag.ERROR:
+                                        LoreErrorEventDataFFI err = loreEvent.GetData<LoreErrorEventDataFFI>();
+                                        if (!string.IsNullOrEmpty(err.ErrorInner))
+                                        {
+                                            result.ErrorMessage = err.ErrorInner;
+                                        }
+
+                                        break;
+                                }
+                            }).Wait();
+                        }
+                        finally
+                        {
+                            globalArgs.Dispose();
+                        }
+                    },
+                    LoginTimeoutMs).ConfigureAwait(false);
+
+                // The SDK signals failure either by throwing (caught below) or by emitting an ERROR
+                // event; absent both, sign-in succeeded and the credential store has been updated.
+                result.Success = string.IsNullOrEmpty(result.ErrorMessage);
+                result.LoginUrl = string.Empty;
+                return result;
+            }
+            catch (Exception ex)
+            {
+                result.Success = false;
+                if (string.IsNullOrEmpty(result.ErrorMessage))
+                {
+                    result.ErrorMessage = Unwrap(ex).Message;
+                }
+
+                return result;
+            }
         }
 
         /// <inheritdoc/>
@@ -903,8 +1009,66 @@ namespace LoreVS.Worker
             }
             catch (Exception ex)
             {
-                return new LoreCommandResult(false, 1, string.Empty, Unwrap(ex).Message);
+                string message = Unwrap(ex).Message;
+                return new LoreCommandResult(false, 1, string.Empty, message)
+                {
+                    RequiresAuthentication = IsAuthError(message),
+                };
             }
+        }
+
+        /// <summary>
+        /// Opens <paramref name="url"/> in the user's default browser for the interactive sign-in
+        /// flow. Best effort: a failure to launch is logged and the URL is still returned to the
+        /// package (in <see cref="LoreAuthResult.LoginUrl"/>) so it can be surfaced as a fallback.
+        /// </summary>
+        private static void OpenBrowser(string url)
+        {
+            if (string.IsNullOrWhiteSpace(url))
+            {
+                return;
+            }
+
+            try
+            {
+                using var process = Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+                WorkerLog.Write("login: opened browser for sign-in");
+            }
+            catch (Exception ex)
+            {
+                WorkerLog.Write($"login: failed to open browser ({ex.GetType().Name}: {ex.Message})");
+            }
+        }
+
+        /// <summary>
+        /// Heuristically classifies a failure message as authentication/authorization related so the
+        /// package can offer the reactive sign-in prompt. The native SDK surfaces server auth failures
+        /// as plain error text, so this matches the common credential/permission vocabulary.
+        /// </summary>
+        internal static bool IsAuthError(string message)
+        {
+            if (string.IsNullOrEmpty(message))
+            {
+                return false;
+            }
+
+            string[] markers =
+            {
+                "unauthenticated", "unauthorized", "authentication", "not authenticated",
+                "permission denied", "access denied", "forbidden", "not logged in",
+                "no credentials", "credential", "invalid token", "token expired",
+                "expired token", "please log in", "please login", "sign in", "401", "403",
+            };
+
+            foreach (string marker in markers)
+            {
+                if (message.IndexOf(marker, StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         /// <summary>Converts a Lore revision hash to the lowercase hex string the SDK expects.</summary>
