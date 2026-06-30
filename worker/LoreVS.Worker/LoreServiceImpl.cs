@@ -113,6 +113,7 @@ namespace LoreVS.Worker
                         {
                             Path = NormalizePath(repositoryRoot, file.Path),
                             Status = LoreStatusMapper.Map(file),
+                            OriginalPath = ResolveOriginalPath(repositoryRoot, file),
                         });
                     }
                     catch (Exception ex)
@@ -172,6 +173,7 @@ namespace LoreVS.Worker
                                 {
                                     Path = normalized,
                                     Status = LoreStatusMapper.Map(file),
+                                    OriginalPath = ResolveOriginalPath(repositoryRoot, file),
                                 });
                             }
                         }
@@ -928,6 +930,21 @@ namespace LoreVS.Worker
             {
                 return path;
             }
+        }
+
+        /// <summary>
+        /// Returns the absolute, normalized path a moved/renamed file came from, or an empty string
+        /// when the event is not a move (or the SDK did not report a source path). Only
+        /// <see cref="LoreFileAction.MOVE"/> events carry a meaningful <c>FromPath</c>.
+        /// </summary>
+        private static string ResolveOriginalPath(string repositoryRoot, LoreRepositoryStatusFileEventDataFFI file)
+        {
+            if (file.Action != LoreFileAction.MOVE || string.IsNullOrEmpty(file.FromPath))
+            {
+                return string.Empty;
+            }
+
+            return NormalizePath(repositoryRoot, file.FromPath);
         }
     }
 }

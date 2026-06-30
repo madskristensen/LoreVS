@@ -61,7 +61,9 @@ Changes window.
 
 The window shows the current branch with incoming/outgoing
 indicators and arranges every changed file in a folder tree back to the
-repository root, each file showing a status badge (M, A, D, C) on the right.
+repository root, each file showing a status badge (M, A, D, R, C) on the right.
+Renamed or moved files show an **R** badge, and hovering it reveals the path the
+file was moved from.
 From here you can:
 
 - Pick exactly which files to include in the next commit. Every changed file

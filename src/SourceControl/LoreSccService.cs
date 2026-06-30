@@ -344,6 +344,7 @@ namespace LoreVS.SourceControl
                 case LoreFileStatus.Unchanged:
                     return VsStateIcon.STATEICON_CHECKEDIN;
                 case LoreFileStatus.Modified:
+                case LoreFileStatus.Renamed:
                     return VsStateIcon.STATEICON_CHECKEDOUT;
                 case LoreFileStatus.Added:
                     return _customGlyphsRegistered
@@ -371,6 +372,7 @@ namespace LoreVS.SourceControl
                 case LoreFileStatus.Modified:
                 case LoreFileStatus.Added:
                 case LoreFileStatus.Deleted:
+                case LoreFileStatus.Renamed:
                 case LoreFileStatus.Conflicted:
                 case LoreFileStatus.Locked:
                     return SccStatusControlled | SccStatusCheckedOut;
@@ -393,6 +395,8 @@ namespace LoreVS.SourceControl
                     return "Lore: added";
                 case LoreFileStatus.Deleted:
                     return "Lore: deleted";
+                case LoreFileStatus.Renamed:
+                    return "Lore: renamed";
                 case LoreFileStatus.Conflicted:
                     return "Lore: conflicted";
                 case LoreFileStatus.Locked:

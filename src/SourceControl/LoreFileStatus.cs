@@ -21,6 +21,9 @@ namespace LoreVS.SourceControl
         /// <summary>Removed from the working tree but still tracked.</summary>
         Deleted,
 
+        /// <summary>Renamed or moved from another path in the working tree.</summary>
+        Renamed,
+
         /// <summary>In a conflicted/merge state.</summary>
         Conflicted,
 

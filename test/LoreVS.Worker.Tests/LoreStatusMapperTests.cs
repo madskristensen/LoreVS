@@ -8,7 +8,7 @@ namespace LoreVS.Worker.Tests
     /// <summary>
     /// Tests for <see cref="LoreStatusMapper.Map(LoreFileAction, bool, bool, bool)"/>, which normalizes
     /// a Lore status file event into the <see cref="LoreFileStatus"/> the SCC glyphs consume. Conflict
-    /// must win over the action, MOVE/COPY count as modified, and a dirty KEEP is modified.
+    /// must win over the action, MOVE is a rename, COPY counts as modified, and a dirty KEEP is modified.
     /// </summary>
     [TestClass]
     public class LoreStatusMapperTests
@@ -16,7 +16,7 @@ namespace LoreVS.Worker.Tests
         [DataTestMethod]
         [DataRow(LoreFileAction.ADD, LoreFileStatus.Added)]
         [DataRow(LoreFileAction.DELETE, LoreFileStatus.Deleted)]
-        [DataRow(LoreFileAction.MOVE, LoreFileStatus.Modified)]
+        [DataRow(LoreFileAction.MOVE, LoreFileStatus.Renamed)]
         [DataRow(LoreFileAction.COPY, LoreFileStatus.Modified)]
         public void Map_ActionDrivesStatus(LoreFileAction action, LoreFileStatus expected)
         {

@@ -71,5 +71,27 @@ namespace LoreVS.Tests
             Assert.AreEqual(badge, item.StatusBadge);
             Assert.AreEqual(text, item.StatusText);
         }
+
+        [TestMethod]
+        public void Renamed_BadgeIsRAndCarriesOriginalPath()
+        {
+            var item = new LoreChangeItem(@"C:\repo\src\New.cs", Root, LoreFileStatus.Renamed, @"C:\repo\src\Old.cs");
+
+            Assert.AreEqual("R", item.StatusBadge);
+            Assert.AreEqual(@"src\Old.cs", item.OriginalRelativePath);
+            Assert.AreEqual(@"C:\repo\src\Old.cs", item.OriginalFullPath);
+            Assert.AreEqual(@"Renamed from src\Old.cs", item.StatusText);
+        }
+
+        [TestMethod]
+        public void Renamed_WithoutOriginalPath_FallsBackToPlainText()
+        {
+            var item = new LoreChangeItem(@"C:\repo\src\New.cs", Root, LoreFileStatus.Renamed);
+
+            Assert.AreEqual("R", item.StatusBadge);
+            Assert.IsNull(item.OriginalRelativePath);
+            Assert.IsNull(item.OriginalFullPath);
+            Assert.AreEqual("Renamed", item.StatusText);
+        }
     }
 }

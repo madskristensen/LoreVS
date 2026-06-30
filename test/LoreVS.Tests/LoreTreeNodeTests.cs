@@ -129,6 +129,24 @@ namespace LoreVS.Tests
         }
 
         [TestMethod]
+        public void FileLeaf_IsDeleted_OnlyForDeletedStatus()
+        {
+            List<LoreTreeNode> roots = LoreTreeNode.BuildTree(new[]
+            {
+                File(@"src\Gone.cs", LoreFileStatus.Deleted),
+                File(@"src\New.cs", LoreFileStatus.Added),
+            });
+
+            LoreTreeNode folder = roots[0];
+            LoreTreeNode deleted = folder.Children.Single(n => n.Name == "Gone.cs");
+            LoreTreeNode added = folder.Children.Single(n => n.Name == "New.cs");
+
+            Assert.IsTrue(deleted.IsDeleted);
+            Assert.IsFalse(added.IsDeleted);
+            Assert.IsFalse(folder.IsDeleted);
+        }
+
+        [TestMethod]
         public void FileLeaf_DefaultsToChecked()
         {
             List<LoreTreeNode> roots = LoreTreeNode.BuildTree(new[]

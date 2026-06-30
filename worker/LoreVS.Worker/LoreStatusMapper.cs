@@ -38,6 +38,7 @@ namespace LoreVS.Worker
                 case LoreFileAction.DELETE:
                     return LoreFileStatus.Deleted;
                 case LoreFileAction.MOVE:
+                    return LoreFileStatus.Renamed;
                 case LoreFileAction.COPY:
                     return LoreFileStatus.Modified;
                 case LoreFileAction.KEEP:

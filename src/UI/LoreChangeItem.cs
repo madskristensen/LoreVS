@@ -10,7 +10,7 @@ namespace LoreVS.UI
     /// </summary>
     public sealed class LoreChangeItem
     {
-        public LoreChangeItem(string fullPath, string repositoryRoot, LoreFileStatus status)
+        public LoreChangeItem(string fullPath, string repositoryRoot, LoreFileStatus status, string? originalPath = null)
         {
             FullPath = fullPath;
             Status = status;
@@ -19,6 +19,11 @@ namespace LoreVS.UI
 
             string dir = Path.GetDirectoryName(RelativePath);
             Directory = string.IsNullOrEmpty(dir) ? string.Empty : dir;
+
+            OriginalFullPath = string.IsNullOrEmpty(originalPath) ? null : originalPath;
+            OriginalRelativePath = OriginalFullPath == null
+                ? null
+                : MakeRelative(repositoryRoot, OriginalFullPath);
         }
 
         /// <summary>Absolute path of the file on disk.</summary>
@@ -36,7 +41,19 @@ namespace LoreVS.UI
         /// <summary>The normalized Lore status.</summary>
         public LoreFileStatus Status { get; }
 
-        /// <summary>Single-letter status badge (M, A, D, C, L) shown next to the file.</summary>
+        /// <summary>
+        /// For a renamed/moved file, the absolute path it was moved from; otherwise
+        /// <see langword="null"/>.
+        /// </summary>
+        public string? OriginalFullPath { get; }
+
+        /// <summary>
+        /// For a renamed/moved file, the source path relative to the repository root; otherwise
+        /// <see langword="null"/>.
+        /// </summary>
+        public string? OriginalRelativePath { get; }
+
+        /// <summary>Single-letter status badge (M, A, D, R, C, L) shown next to the file.</summary>
         public string StatusBadge
         {
             get
@@ -46,6 +63,7 @@ namespace LoreVS.UI
                     case LoreFileStatus.Modified: return "M";
                     case LoreFileStatus.Added: return "A";
                     case LoreFileStatus.Deleted: return "D";
+                    case LoreFileStatus.Renamed: return "R";
                     case LoreFileStatus.Conflicted: return "C";
                     case LoreFileStatus.Locked: return "L";
                     default: return string.Empty;
@@ -63,6 +81,10 @@ namespace LoreVS.UI
                     case LoreFileStatus.Modified: return "Modified";
                     case LoreFileStatus.Added: return "Added";
                     case LoreFileStatus.Deleted: return "Deleted";
+                    case LoreFileStatus.Renamed:
+                        return OriginalRelativePath == null
+                            ? "Renamed"
+                            : "Renamed from " + OriginalRelativePath;
                     case LoreFileStatus.Conflicted: return "Conflicted";
                     case LoreFileStatus.Locked: return "Locked";
                     default: return Status.ToString();

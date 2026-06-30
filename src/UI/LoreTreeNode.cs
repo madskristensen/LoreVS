@@ -201,6 +201,12 @@ namespace LoreVS.UI
         /// <summary>Single-letter status badge for a file leaf; empty for folders.</summary>
         public string StatusBadge => File?.StatusBadge ?? string.Empty;
 
+        /// <summary>
+        /// True when this row is a deleted file leaf. Drives the strikethrough styling so deleted
+        /// files read as removed at a glance.
+        /// </summary>
+        public bool IsDeleted => File?.Status == LoreVS.SourceControl.LoreFileStatus.Deleted;
+
         /// <summary>Human-readable status for the tooltip; empty for folders.</summary>
         public string StatusText => File?.StatusText ?? string.Empty;
 

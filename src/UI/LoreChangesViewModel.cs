@@ -369,7 +369,7 @@ namespace LoreVS.UI
                 Changes.Clear();
                 IEnumerable<LoreChangeItem> items = (snapshot?.Files ?? Array.Empty<LoreStatusEntry>())
                     .Where(e => !string.IsNullOrEmpty(e.Path) && IsChange(e.Status))
-                    .Select(e => new LoreChangeItem(e.Path, root, e.Status))
+                    .Select(e => new LoreChangeItem(e.Path, root, e.Status, e.OriginalPath))
                     .OrderBy(i => i.RelativePath, StringComparer.OrdinalIgnoreCase);
 
                 foreach (LoreChangeItem item in items)
@@ -949,6 +949,7 @@ namespace LoreVS.UI
                 case LoreFileStatus.Modified:
                 case LoreFileStatus.Added:
                 case LoreFileStatus.Deleted:
+                case LoreFileStatus.Renamed:
                 case LoreFileStatus.Conflicted:
                     return true;
                 default:

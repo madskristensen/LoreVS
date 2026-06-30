@@ -234,5 +234,11 @@ namespace LoreVS.SourceControl
 
         /// <summary>The file's normalized Lore status.</summary>
         public LoreFileStatus Status { get; set; }
+
+        /// <summary>
+        /// For a renamed/moved file (<see cref="LoreFileStatus.Renamed"/>), the absolute, normalized
+        /// path the file was moved from. Empty for every other status.
+        /// </summary>
+        public string OriginalPath { get; set; } = string.Empty;
     }
 }

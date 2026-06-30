@@ -272,9 +272,21 @@
                                                 Moniker="{Binding Icon}"
                                                 Width="16" Height="16"
                                                 VerticalAlignment="Center" />
+                            <!-- Top margin of -1 optically centers the file name against the 16px
+                                 icon: a TextBlock's line box otherwise sits a pixel low (font leading). -->
                             <TextBlock Grid.Column="2" Text="{Binding Name}"
-                                       VerticalAlignment="Center" Margin="4,0,0,0"
-                                       TextTrimming="CharacterEllipsis" />
+                                       VerticalAlignment="Center" Margin="4,-1,0,0"
+                                       TextTrimming="CharacterEllipsis">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsDeleted}" Value="True">
+                                                <Setter Property="TextDecorations" Value="Strikethrough" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
                             <Button Grid.Column="3"
                                     Style="{StaticResource LoreRowActionButtonStyle}"
                                     Click="OnUndoFileClick"
