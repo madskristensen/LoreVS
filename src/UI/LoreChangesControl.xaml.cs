@@ -1,9 +1,12 @@
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 using Community.VisualStudio.Toolkit;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Threading;
@@ -19,6 +22,11 @@ namespace LoreVS.UI
         /// <summary>The control currently hosted in the tool window, used by the toolbar commands.</summary>
         internal static LoreChangesControl? Current { get; private set; }
 
+        // The TreeView is bound to the repository-root nodes; their Children carry the full subtree so
+        // the control renders the hierarchy natively. The view model still exposes a flattened Nodes
+        // collection, so the roots are re-derived (those without a parent) whenever it changes.
+        private readonly ObservableCollection<LoreTreeNode> _rootNodes = new ObservableCollection<LoreTreeNode>();
+
         private bool _initialized;
 
         public LoreChangesControl(LoreChangesViewModel viewModel)
@@ -26,6 +34,10 @@ namespace LoreVS.UI
             ViewModel = viewModel;
             InitializeComponent();
             DataContext = viewModel;
+
+            ChangesTree.ItemsSource = _rootNodes;
+            viewModel.Nodes.CollectionChanged += OnNodesChanged;
+            SyncRootNodes();
 
             viewModel.PropertyChanged += OnViewModelPropertyChanged;
             UpdateRepositoryVisibility();
@@ -182,13 +194,29 @@ namespace LoreVS.UI
                 System.Windows.Threading.DispatcherPriority.Background);
         }
 
+        private void OnNodesChanged(object sender, NotifyCollectionChangedEventArgs e) => SyncRootNodes();
+
+        // Rebuild the bound roots from the flattened view-model collection. The same node instances are
+        // reused, so their expand/checked state (and the TreeView's selection) survive a refresh.
+        private void SyncRootNodes()
+        {
+            _rootNodes.Clear();
+            foreach (LoreTreeNode node in ViewModel.Nodes)
+            {
+                if (node.Parent == null)
+                {
+                    _rootNodes.Add(node);
+                }
+            }
+        }
+
         private void OnChangeDoubleClick(object sender, MouseButtonEventArgs e)
         {
-            if (ChangesList.SelectedItem is LoreTreeNode node)
+            if (ChangesTree.SelectedItem is LoreTreeNode node)
             {
                 if (node.IsFolder)
                 {
-                    ViewModel.ToggleFolder(node);
+                    node.IsExpanded = !node.IsExpanded;
                 }
                 else if (node.File != null)
                 {
@@ -197,26 +225,33 @@ namespace LoreVS.UI
             }
         }
 
-        private void OnExpanderClick(object sender, MouseButtonEventArgs e)
+        // A right-click does not select the row in a WPF TreeView, so select the item under the cursor
+        // before the context menu opens to keep the menu actions targeting the clicked row.
+        private void OnTreeRightButtonDown(object sender, MouseButtonEventArgs e)
         {
-            if (sender is FrameworkElement element && element.DataContext is LoreTreeNode node)
+            DependencyObject? source = e.OriginalSource as DependencyObject;
+            while (source != null && !(source is TreeViewItem))
             {
-                ViewModel.ToggleFolder(node);
-                e.Handled = true;
+                source = VisualTreeHelper.GetParent(source);
+            }
+
+            if (source is TreeViewItem item)
+            {
+                item.IsSelected = true;
             }
         }
 
         // "Open Diff" only makes sense for file leaves; hide it for folder rows and empty space
-        // since the context menu is shared across every row in the list.
+        // since the context menu is shared across every row in the tree.
         private void OnContextMenuOpening(object sender, ContextMenuEventArgs e)
         {
-            bool isFile = ChangesList.SelectedItem is LoreTreeNode node && node.File != null;
+            bool isFile = ChangesTree.SelectedItem is LoreTreeNode node && node.File != null;
             OpenDiffMenuItem.Visibility = isFile ? Visibility.Visible : Visibility.Collapsed;
         }
 
         private void OnOpenDiffMenu(object sender, RoutedEventArgs e)
         {
-            if (ChangesList.SelectedItem is LoreTreeNode node && node.File != null)
+            if (ChangesTree.SelectedItem is LoreTreeNode node && node.File != null)
             {
                 Run(() => ViewModel.ShowDiffAsync(node.File));
             }
@@ -224,7 +259,7 @@ namespace LoreVS.UI
 
         private void OnOpenFileMenu(object sender, RoutedEventArgs e)
         {
-            if (ChangesList.SelectedItem is LoreTreeNode node && node.File != null)
+            if (ChangesTree.SelectedItem is LoreTreeNode node && node.File != null)
             {
                 Run(() => VS.Documents.OpenAsync(node.File.FullPath));
             }
@@ -232,14 +267,38 @@ namespace LoreVS.UI
 
         private void OnDiscardMenu(object sender, RoutedEventArgs e)
         {
-            IReadOnlyList<LoreChangeItem> items = ChangesList.SelectedItems
-                .Cast<LoreTreeNode>()
-                .Where(n => n.File != null)
-                .Select(n => n.File!)
-                .ToList();
+            // Discard operates on the checked files (the multi-select model after the TreeView switch),
+            // falling back to the selected row's files when nothing is checked.
+            IReadOnlyList<LoreChangeItem> items = GetCheckedFiles();
+            if (items.Count == 0 && ChangesTree.SelectedItem is LoreTreeNode node)
+            {
+                items = node.EnumerateFileLeaves()
+                    .Where(n => n.File != null)
+                    .Select(n => n.File!)
+                    .ToList();
+            }
+
             if (items.Count > 0)
             {
                 Run(() => ViewModel.DiscardAsync(items));
+            }
+        }
+
+        private IReadOnlyList<LoreChangeItem> GetCheckedFiles() =>
+            _rootNodes
+                .SelectMany(n => n.EnumerateFileLeaves())
+                .Where(n => n.IsChecked == true && n.File != null)
+                .Select(n => n.File!)
+                .ToList();
+
+        // The inline (hover-revealed) discard button on a file row: same effect as "Discard Changes..."
+        // in the context menu, but scoped to that single file.
+        private void OnUndoFileClick(object sender, RoutedEventArgs e)
+        {
+            if (sender is FrameworkElement element && element.DataContext is LoreTreeNode node && node.File != null)
+            {
+                Run(() => ViewModel.DiscardAsync(new[] { node.File! }));
+                e.Handled = true;
             }
         }
 

@@ -3,11 +3,175 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:toolkit="clr-namespace:Community.VisualStudio.Toolkit;assembly=Community.VisualStudio.Toolkit"
              xmlns:imaging="clr-namespace:Microsoft.VisualStudio.Imaging;assembly=Microsoft.VisualStudio.Imaging"
+             xmlns:catalog="clr-namespace:Microsoft.VisualStudio.Imaging;assembly=Microsoft.VisualStudio.ImageCatalog"
+             xmlns:vsui="clr-namespace:Microsoft.VisualStudio.PlatformUI;assembly=Microsoft.VisualStudio.Shell.15.0"
              toolkit:Themes.UseVsTheme="True"
              mc:Ignorable="d"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              d:DesignHeight="500" d:DesignWidth="320">
+
+    <UserControl.Resources>
+        <!-- The toolkit's UseVsTheme only recolors a few brushes and leaves the TreeView looking like a
+             plain WPF tree (system selection color, Windows expander glyph, header that does not stretch),
+             so the tree rows are re-templated against the VS environment colors instead. Stretching the
+             header across the remaining width also lets the status badge right-align to the row edge. -->
+
+        <!-- Subtle full-row selection/hover tints, like Solution Explorer. -->
+        <SolidColorBrush x:Key="LoreTreeSelectionBrush" Color="#20808080" />
+        <SolidColorBrush x:Key="LoreTreeHoverBrush" Color="#15808080" />
+
+        <!-- Inline row action (the discard button revealed on hover). Borderless and transparent so it
+             reads as an affordance over the row; it only becomes visible while the file row is hovered. -->
+        <Style x:Key="LoreRowActionButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="4,2" />
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="Cursor" Value="Hand" />
+            <!-- Hidden (not Collapsed) so the button always reserves its space: the row keeps a constant
+                 height whether or not it is hovered, instead of growing (jumping) when the button appears. -->
+            <Setter Property="Visibility" Value="Hidden" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background"
+                                        Value="{StaticResource LoreTreeSelectionBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <!-- Reveal only for file rows (folders have no per-file discard) while the row is hovered. -->
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding IsFolder}" Value="False" />
+                        <Condition Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=TreeViewItem}}" Value="True" />
+                    </MultiDataTrigger.Conditions>
+                    <Setter Property="Visibility" Value="Visible" />
+                </MultiDataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="LoreExpanderToggleStyle" TargetType="ToggleButton">
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="Width" Value="16" />
+            <Setter Property="Height" Value="16" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border Background="Transparent" Padding="4,4,0,4">
+                            <Path x:Name="Arrow"
+                                  HorizontalAlignment="Center" VerticalAlignment="Center"
+                                  Data="M0,0 L4,4 L0,8 Z"
+                                  SnapsToDevicePixels="True"
+                                  Fill="{DynamicResource {x:Static vsui:TreeViewColors.GlyphBrushKey}}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Arrow" Property="Data" Value="M0,0 L8,0 L4,4 Z" />
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Arrow" Property="Fill"
+                                        Value="{DynamicResource {x:Static vsui:TreeViewColors.GlyphMouseOverBrushKey}}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="LoreTreeViewItemStyle" TargetType="TreeViewItem">
+            <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource {x:Static vsui:TreeViewColors.BackgroundTextBrushKey}}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TreeViewItem">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition />
+                            </Grid.RowDefinitions>
+
+                            <!-- Full-row selection/hover background. The negative margin + matching
+                                 padding lets the tint bleed past the indent to the window edges, and
+                                 wrapping the row content *inside* this border makes the whole row (not
+                                 just the strips above/below the text) hover- and hit-testable. -->
+                            <Border x:Name="SelectionBd"
+                                    Background="Transparent"
+                                    Margin="-1000,0,0,0" Padding="1000,0,0,0">
+                                <Grid>
+                                    <Rectangle x:Name="AccentLine"
+                                               Width="2" HorizontalAlignment="Left"
+                                               Fill="Transparent" />
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="16" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <ToggleButton x:Name="Expander"
+                                                      Style="{StaticResource LoreExpanderToggleStyle}"
+                                                      ClickMode="Press"
+                                                      VerticalAlignment="Center"
+                                                      IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}}" />
+                                        <ContentPresenter x:Name="PART_Header" Grid.Column="1"
+                                                          ContentSource="Header"
+                                                          HorizontalAlignment="Stretch"
+                                                          VerticalAlignment="Center"
+                                                          Margin="0,3"
+                                                          SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" />
+                                    </Grid>
+                                </Grid>
+                            </Border>
+
+                            <ItemsPresenter x:Name="ItemsHost" Grid.Row="1" Margin="16,0,0,0" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsExpanded" Value="False">
+                                <Setter TargetName="ItemsHost" Property="Visibility" Value="Collapsed" />
+                            </Trigger>
+                            <Trigger Property="HasItems" Value="False">
+                                <Setter TargetName="Expander" Property="Visibility" Value="Hidden" />
+                            </Trigger>
+                            <Trigger SourceName="SelectionBd" Property="IsMouseOver" Value="True">
+                                <Setter TargetName="SelectionBd" Property="Background"
+                                        Value="{StaticResource LoreTreeHoverBrush}" />
+                            </Trigger>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsSelected" Value="True" />
+                                    <Condition Property="Selector.IsSelectionActive" Value="True" />
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="SelectionBd" Property="Background"
+                                        Value="{StaticResource LoreTreeSelectionBrush}" />
+                                <Setter TargetName="AccentLine" Property="Fill"
+                                        Value="{DynamicResource {x:Static vsui:TreeViewColors.SelectedItemActiveBrushKey}}" />
+                            </MultiTrigger>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsSelected" Value="True" />
+                                    <Condition Property="Selector.IsSelectionActive" Value="False" />
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="SelectionBd" Property="Background"
+                                        Value="{StaticResource LoreTreeSelectionBrush}" />
+                            </MultiTrigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
 
     <Grid Margin="8">
         <!-- Shown when the open solution/folder is not under Lore source control. -->
@@ -25,7 +189,7 @@
                        Margin="0,0,0,8" Opacity="0.8" VerticalAlignment="Center" />
 
             <!-- Commit area -->
-            <StackPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+            <StackPanel DockPanel.Dock="Top" Margin="0,0,0,16">
                 <TextBox x:Name="MessageBox"
                          Text="{Binding CommitMessage, UpdateSourceTrigger=PropertyChanged}"
                          AcceptsReturn="True" TextWrapping="Wrap"
@@ -55,7 +219,7 @@
                        Margin="0,8,0,0" Opacity="0.8" TextTrimming="CharacterEllipsis" />
 
             <!-- Changes header with a master select-all checkbox -->
-            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,4">
+            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,8,0,6">
                 <CheckBox x:Name="SelectAllCheck"
                           IsChecked="{Binding AllSelected, Mode=TwoWay}"
                           IsThreeState="False"
@@ -66,39 +230,37 @@
                            Text="{Binding Changes.Count, StringFormat=Changes ({0})}" />
             </StackPanel>
 
-            <!-- Changed files as a folder tree -->
-            <ListBox x:Name="ChangesList"
-                     ItemsSource="{Binding Nodes}"
-                     SelectionMode="Extended"
-                     HorizontalContentAlignment="Stretch"
-                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                     MouseDoubleClick="OnChangeDoubleClick"
-                     ContextMenuOpening="OnContextMenuOpening">
-                <ListBox.InputBindings>
-                    <KeyBinding Key="Return" Command="{x:Static ApplicationCommands.NotACommand}" />
-                </ListBox.InputBindings>
-                <ListBox.ItemContainerStyle>
-                    <Style TargetType="ListBoxItem">
-                        <Setter Property="Margin" Value="0,1" />
-                    </Style>
-                </ListBox.ItemContainerStyle>
-                <ListBox.ContextMenu>
+            <!-- Changed files as a folder tree. A real TreeView gives native expand/collapse,
+                 arrow-key navigation and type-ahead; multi-file gestures use the row checkboxes.
+                 UseVsTheme is off here because the rows carry their own VS-themed template. -->
+            <TreeView x:Name="ChangesTree"
+                      BorderThickness="0"
+                      toolkit:Themes.UseVsTheme="False"
+                      Background="{DynamicResource {x:Static vsui:EnvironmentColors.ToolWindowBackgroundBrushKey}}"
+                      Foreground="{DynamicResource {x:Static vsui:EnvironmentColors.ToolWindowTextBrushKey}}"
+                      HorizontalContentAlignment="Stretch"
+                      ItemContainerStyle="{StaticResource LoreTreeViewItemStyle}"
+                      VirtualizingPanel.IsVirtualizing="True"
+                      ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                      MouseDoubleClick="OnChangeDoubleClick"
+                      PreviewMouseRightButtonDown="OnTreeRightButtonDown"
+                      ContextMenuOpening="OnContextMenuOpening">
+                <TreeView.ContextMenu>
                     <ContextMenu>
                         <MenuItem x:Name="OpenDiffMenuItem" Header="Open Diff" Click="OnOpenDiffMenu" />
                         <MenuItem Header="Open File" Click="OnOpenFileMenu" />
                         <Separator />
                         <MenuItem Header="Discard Changes..." Click="OnDiscardMenu" />
                     </ContextMenu>
-                </ListBox.ContextMenu>
-                <ListBox.ItemTemplate>
-                    <DataTemplate>
-                        <Grid Margin="{Binding RowMargin}" Background="Transparent"
-                              ToolTip="{Binding RowToolTip}">
+                </TreeView.ContextMenu>
+                <TreeView.ItemTemplate>
+                    <HierarchicalDataTemplate ItemsSource="{Binding Children}">
+                        <Grid Background="Transparent" ToolTip="{Binding RowToolTip}">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="16" />
-                                <ColumnDefinition Width="16" />
                                 <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <CheckBox Grid.Column="0"
@@ -106,27 +268,30 @@
                                       IsThreeState="False"
                                       VerticalAlignment="Center" Margin="0,0,4,0"
                                       ToolTip="Include in commit" />
-                            <TextBlock Grid.Column="1"
-                                       Text="{Binding ExpanderGlyph}"
-                                       Visibility="{Binding ExpanderVisibility}"
-                                       MouseLeftButtonUp="OnExpanderClick"
-                                       HorizontalAlignment="Center" VerticalAlignment="Center"
-                                       FontSize="10" Opacity="0.8" Cursor="Hand" />
-                            <imaging:CrispImage Grid.Column="2"
+                            <imaging:CrispImage Grid.Column="1"
                                                 Moniker="{Binding Icon}"
                                                 Width="16" Height="16"
                                                 VerticalAlignment="Center" />
-                            <TextBlock Grid.Column="3" Text="{Binding Name}"
+                            <TextBlock Grid.Column="2" Text="{Binding Name}"
                                        VerticalAlignment="Center" Margin="4,0,0,0"
                                        TextTrimming="CharacterEllipsis" />
+                            <Button Grid.Column="3"
+                                    Style="{StaticResource LoreRowActionButtonStyle}"
+                                    Click="OnUndoFileClick"
+                                    VerticalAlignment="Stretch" VerticalContentAlignment="Center"
+                                    Margin="4,0,0,0"
+                                    ToolTip="Discard Changes">
+                                <imaging:CrispImage Moniker="{x:Static catalog:KnownMonikers.Undo}"
+                                                    Width="16" Height="16" />
+                            </Button>
                             <TextBlock Grid.Column="4" Text="{Binding StatusBadge}"
                                        HorizontalAlignment="Right"
-                                       VerticalAlignment="Center" Margin="8,0,0,0"
+                                       VerticalAlignment="Center" Margin="8,0,6,0"
                                        ToolTip="{Binding StatusText}" />
                         </Grid>
-                    </DataTemplate>
-                </ListBox.ItemTemplate>
-            </ListBox>
+                    </HierarchicalDataTemplate>
+                </TreeView.ItemTemplate>
+            </TreeView>
         </DockPanel>
     </Grid>
 </UserControl>
