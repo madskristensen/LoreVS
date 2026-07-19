@@ -44,6 +44,7 @@ namespace LoreVS
     // The Lore Changes tool window - a Git Changes-style panel for staging-free commit, diff,
     // and push/pull. Docked next to Solution Explorer by default.
     [ProvideToolWindow(typeof(UI.LoreChangesToolWindow.Pane), Style = VsDockStyle.Tabbed, Window = WindowGuids.SolutionExplorer)]
+    [ProvideBindingPath()]
     [Guid(PackageGuids.LoreVSString)]
     public sealed partial class LoreVSPackage : ToolkitPackage
     {
