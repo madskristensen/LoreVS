@@ -19,8 +19,8 @@ commit - all without leaving the IDE or dropping to a terminal.
 
 ## Add a solution to Lore
 
-Right-click the solution node (or the Open Folder root) and choose
-**Lore > Add to Lore Source Control**. Choose **Local repository** (the default)
+Open the solution or folder, then click the **Add to Source Control** button on
+the Visual Studio status bar (bottom-right) and choose **Lore**. Choose **Local repository** (the default)
 to create a fully offline repository where all content stays on your machine, so
 you can branch, commit, and switch branches without a server. Choose **Create on
 a Lore server** and enter a server URL (e.g. `lore://127.0.0.1:41337`) only when

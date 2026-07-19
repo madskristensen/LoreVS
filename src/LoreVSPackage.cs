@@ -35,7 +35,8 @@ namespace LoreVS
         "#100",
         LoreGuids.SccProviderString,
         PackageGuids.LoreVSString,
-        LoreGuids.SccServiceString)]
+        LoreGuids.SccServiceString,
+        IsPublishSupported = true)]
     [ProvideOptionPage(typeof(Options.OptionsProvider.GeneralOptions), "Lore", "General", 0, 0, supportsAutomation: true, SupportsProfiles = true)]
     [ProvideAutoLoad(LoreGuids.SccProviderString, PackageAutoLoadFlags.BackgroundLoad)]
     [ProvideAutoLoad(VSConstants.UICONTEXT.SolutionExists_string, PackageAutoLoadFlags.BackgroundLoad)]
@@ -51,6 +52,11 @@ namespace LoreVS
         // The Lore repository root bound to the currently open solution (null when not controlled).
         // Discovered git-style by detecting a .lore folder; nothing is persisted to the .sln.
         private string? _controlledRoot;
+
+        // Cookie for the Lore "controlled" command UI context (LoreGuids.ControlledContext),
+        // asserted only while the open solution/folder is under Lore source control.
+        private uint _controlledContextCookie;
+        private bool _controlledContextResolved;
 
         /// <summary>The active Lore SCC provider service, available once the package has loaded.</summary>
         internal LoreSccService SccService => _sccService;
@@ -80,7 +86,9 @@ namespace LoreVS
             // No .sln persistence: the .lore folder on disk is the source of truth (git-style),
             // so reopening the solution rediscovers it in ApplyControlledBinding.
             _controlledRoot = repositoryRoot;
-            return ActivateAndBind(solution, repositoryRoot);
+            int bound = ActivateAndBind(solution, repositoryRoot);
+            SetControlledContext(true);
+            return bound;
         }
 
         /// <summary>
@@ -186,6 +194,35 @@ namespace LoreVS
         {
             ThreadHelper.ThrowIfNotOnUIThread();
             _controlledRoot = null;
+            SetControlledContext(false);
+        }
+
+        /// <summary>
+        /// Asserts or clears the Lore "controlled" command UI context
+        /// (<see cref="LoreGuids.ControlledContext"/>) so the Lore commands and their flyout are
+        /// visible only while the open solution/folder is under Lore source control. This is driven
+        /// by <c>.lore</c> detection rather than the SCC active-provider state, which Visual Studio
+        /// manages globally and can leave asserted after switching to a non-Lore solution.
+        /// </summary>
+        private void SetControlledContext(bool active)
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+
+            if (!(GetService(typeof(SVsShellMonitorSelection)) is IVsMonitorSelection monitorSelection))
+            {
+                DiagLog.Write("[ctx] SVsShellMonitorSelection unavailable; cannot toggle Lore UI context");
+                return;
+            }
+
+            if (!_controlledContextResolved)
+            {
+                Guid contextGuid = LoreGuids.ControlledContext;
+                monitorSelection.GetCmdUIContextCookie(ref contextGuid, out _controlledContextCookie);
+                _controlledContextResolved = true;
+            }
+
+            monitorSelection.SetCmdUIContext(_controlledContextCookie, active ? 1 : 0);
+            DiagLog.Write($"[ctx] Lore controlled UI context -> {(active ? "active" : "inactive")}");
         }
 
         /// <summary>
@@ -208,6 +245,7 @@ namespace LoreVS
             {
                 DiagLog.Write("[bind] no solution directory; nothing to bind");
                 _controlledRoot = null;
+                SetControlledContext(false);
                 return;
             }
 
@@ -217,11 +255,13 @@ namespace LoreVS
             {
                 _controlledRoot = detected;
                 ActivateAndBind(solution, detected);
+                SetControlledContext(true);
             }
             else
             {
                 DiagLog.Write("[bind] no .lore root detected -> RefreshAllGlyphs only (provider NOT activated)");
                 _controlledRoot = null;
+                SetControlledContext(false);
                 _sccService.RefreshAllGlyphs();
             }
         }

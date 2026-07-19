@@ -15,10 +15,5 @@ namespace LoreVS.Commands
     {
         protected override Task ExecuteAsync(OleMenuCmdEventArgs e) =>
             LoreChangesToolWindow.ShowAsync();
-
-        protected override void BeforeQueryStatus(EventArgs e)
-        {
-            Command.Visible = Command.Enabled = (Package as LoreVSPackage)?.IsSolutionControlled == true;
-        }
     }
 }

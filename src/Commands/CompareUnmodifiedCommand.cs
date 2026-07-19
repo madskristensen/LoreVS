@@ -14,11 +14,6 @@ namespace LoreVS.Commands
     [Command(PackageIds.CompareUnmodifiedCommand)]
     internal sealed class CompareUnmodifiedCommand : BaseCommand<CompareUnmodifiedCommand>
     {
-        protected override void BeforeQueryStatus(EventArgs e)
-        {
-            Command.Visible = Command.Enabled = (Package as LoreVSPackage)?.IsSolutionControlled == true;
-        }
-
         protected override async Task ExecuteAsync(OleMenuCmdEventArgs e)
         {
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();

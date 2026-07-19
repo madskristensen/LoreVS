@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <CommandTable xmlns="http://schemas.microsoft.com/VisualStudio/2005-10-18/CommandTable" xmlns:xs="http://www.w3.org/2001/XMLSchema">
 
   <Extern href="stdidcmd.h"/>
@@ -66,10 +66,14 @@
     <!--This section defines the elements the user can interact with, like a menu command or a button
         or combo box in a toolbar. -->
     <Buttons>
+      <!-- Onboarding entry point. Invoked programmatically by the publish workflow
+           (IVsSccPublish.BeginPublishWorkflowAsync), so it is kept out of the context menu
+           via DefaultInvisible while remaining routable by command id. -->
       <Button guid="LoreVS" id="AddToLoreCommand" priority="0x0100" type="Button">
         <Parent guid="LoreVS" id="MyMenuGroup" />
         <Icon guid="ImageCatalogGuid" id="Add" />
         <CommandFlag>IconIsMoniker</CommandFlag>
+        <CommandFlag>DefaultInvisible</CommandFlag>
         <Strings>
           <ButtonText>Add to Lore Source Control</ButtonText>
           <LocCanonicalName>.LoreVS.AddToLoreSourceControl</LocCanonicalName>
@@ -83,10 +87,12 @@
           <ButtonText>Clone Lore Repository...</ButtonText>
           <LocCanonicalName>.LoreVS.CloneLoreRepository</LocCanonicalName>
         </Strings>
-      </Button>      <Button guid="LoreVS" id="CommitToLoreCommand" priority="0x0110" type="Button">
+      </Button>
+      <Button guid="LoreVS" id="CommitToLoreCommand" priority="0x0110" type="Button">
         <Parent guid="LoreVS" id="MyMenuGroup" />
         <Icon guid="ImageCatalogGuid" id="SaveAll" />
         <CommandFlag>IconIsMoniker</CommandFlag>
+        <CommandFlag>DynamicVisibility</CommandFlag>
         <Strings>
           <ButtonText>Commit to Lore...</ButtonText>
           <LocCanonicalName>.LoreVS.CommitToLore</LocCanonicalName>
@@ -96,6 +102,7 @@
         <Parent guid="LoreVS" id="LoreFileGroup" />
         <Icon guid="ImageCatalogGuid" id="HideMember" />
         <CommandFlag>IconIsMoniker</CommandFlag>
+        <CommandFlag>DynamicVisibility</CommandFlag>
         <Strings>
           <ButtonText>Ignore and Untrack Item</ButtonText>
           <LocCanonicalName>.LoreVS.IgnoreAndUntrackItem</LocCanonicalName>
@@ -105,6 +112,7 @@
         <Parent guid="LoreVS" id="LoreFileGroup" />
         <Icon guid="ImageCatalogGuid" id="Undo" />
         <CommandFlag>IconIsMoniker</CommandFlag>
+        <CommandFlag>DynamicVisibility</CommandFlag>
         <Strings>
           <ButtonText>Undo Changes</ButtonText>
           <LocCanonicalName>.LoreVS.UndoChanges</LocCanonicalName>
@@ -114,6 +122,7 @@
         <Parent guid="LoreVS" id="LoreFileGroup" />
         <Icon guid="ImageCatalogGuid" id="CompareFiles" />
         <CommandFlag>IconIsMoniker</CommandFlag>
+        <CommandFlag>DynamicVisibility</CommandFlag>
         <Strings>
           <ButtonText>Compare with Unmodified</ButtonText>
           <LocCanonicalName>.LoreVS.CompareWithUnmodified</LocCanonicalName>
@@ -165,6 +174,17 @@
       </Buttons>
   </Commands>
 
+  <!-- Gate the Lore commands on the "Lore is the active source control provider" UI context.
+       Visual Studio asserts the SCC provider GUID as a command UI context while Lore is active
+       (the same context that auto-loads this package), so these commands are hidden whenever the
+       open solution is not under Lore source control. When every command hosted by the "Lore"
+       flyout is hidden, Visual Studio hides the (now empty) flyout automatically. -->
+  <VisibilityConstraints>
+    <VisibilityItem guid="LoreVS" id="CommitToLoreCommand" context="guidLoreUiContext" />
+    <VisibilityItem guid="LoreVS" id="IgnoreAndUntrackCommand" context="guidLoreUiContext" />
+    <VisibilityItem guid="LoreVS" id="UndoChangesCommand" context="guidLoreUiContext" />
+    <VisibilityItem guid="LoreVS" id="CompareUnmodifiedCommand" context="guidLoreUiContext" />
+  </VisibilityConstraints>
   <CommandPlacements>
     <!-- Reuse the same anchor group (and therefore the Lore submenu) on the Open Folder
          root via the Workspace Explorer context menu (a different command set than the
@@ -209,5 +229,11 @@
     <GuidSymbol name="guidWorkspaceExplorerToolWindowPackageCmdSet" value="{cfb400f1-5c60-4f3c-856e-180d28def0b7}">
       <IDSymbol name="idmWSE_ContextMenu" value="0x0002"/>
     </GuidSymbol>
+
+    <!-- The command UI context Lore asserts (via IVsMonitorSelection) only while the open
+         solution/folder is under Lore source control (a .lore repository was detected). The
+         VisibilityConstraints above use it to gate the Lore commands (and their flyout). Must
+         match LoreGuids.ControlledContextString. -->
+    <GuidSymbol name="guidLoreUiContext" value="{20da6b33-19b3-48ab-9d0d-e33925c198bf}" />
   </Symbols>
 </CommandTable>

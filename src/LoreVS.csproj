@@ -67,6 +67,13 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
+    <!-- Lore logo embedded as a WPF resource so the image manifest can reference it via a
+         /LoreVS;component pack URI, plus the manifest itself shipped and registered in the VSIX. -->
+    <Resource Include="Resources\LoreLogo.png" />
+    <Content Include="Resources\Lore.imagemanifest">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
   </ItemGroup>
 
   <!-- Embedded resources -->

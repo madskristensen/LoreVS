@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -19,10 +19,12 @@ namespace LoreVS.SourceControl
     /// (<see cref="IVsSccProvider"/>) and status glyphs/tooltips
     /// (<see cref="IVsSccManager2"/>, <see cref="IVsSccManagerTooltip"/>). It also supplies a
     /// custom green-plus glyph for newly added (not yet committed) files via
-    /// <see cref="IVsSccGlyphs2"/>.
+    /// <see cref="IVsSccGlyphs2"/>. It also drives the "publish" affordance (e.g. the status bar
+    /// unpublished-repository menu) via <see cref="IVsSccPublish"/>, which starts the "Add to Lore
+    /// Source Control" workflow.
     /// </summary>
     [Guid(LoreGuids.SccServiceString)]
-    public sealed class LoreSccService : IVsSccProvider, IVsSccManager2, IVsSccManagerTooltip, IVsSccGlyphs2
+    public sealed partial class LoreSccService : IVsSccProvider, IVsSccManager2, IVsSccManagerTooltip, IVsSccGlyphs2, IVsSccPublish
     {
         // Subset of SCC_STATUS_* flags (sccex.h) reported via rgdwSccStatus.
         private const uint SccStatusNotControlled = 0x0000;

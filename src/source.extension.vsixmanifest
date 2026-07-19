@@ -21,5 +21,6 @@
   </Prerequisites>
   <Assets>
     <Asset Type="Microsoft.VisualStudio.VsPackage" Path="|%CurrentProject%;PkgdefProjectOutputGroup|" d:Source="Project" d:ProjectName="%CurrentProject%" />
+    <Asset Type="Microsoft.VisualStudio.ImageManifest" d:Source="File" Path="Resources\Lore.imagemanifest" />
   </Assets>
 </PackageManifest>

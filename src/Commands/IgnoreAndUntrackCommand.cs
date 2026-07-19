@@ -15,11 +15,6 @@ namespace LoreVS.Commands
     [Command(PackageIds.IgnoreAndUntrackCommand)]
     internal sealed class IgnoreAndUntrackCommand : BaseCommand<IgnoreAndUntrackCommand>
     {
-        protected override void BeforeQueryStatus(EventArgs e)
-        {
-            Command.Visible = Command.Enabled = (Package as LoreVSPackage)?.IsSolutionControlled == true;
-        }
-
         protected override async Task ExecuteAsync(OleMenuCmdEventArgs e)
         {
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();

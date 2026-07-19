@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ImageManifest xmlns="http://schemas.microsoft.com/VisualStudio/ImageManifestSchema/2014">
+  <Symbols>
+    <String Name="Resources" Value="/LoreVS;Component/Resources" />
+    <Guid Name="LoreMonikers" Value="{06556302-fa5a-4449-9882-52130e13d283}" />
+    <ID Name="LoreLogo" Value="1" />
+  </Symbols>
+  <Images>
+    <Image Name="LoreLogo" Source="$(Resources)/LoreLogo.png" Dimensions="128, 128" />
+  </Images>
+  <Monikers>
+    <Moniker Name="LoreLogo" Guid="LoreMonikers" ID="LoreLogo" />
+  </Monikers>
+</ImageManifest>

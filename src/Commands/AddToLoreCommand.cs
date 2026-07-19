@@ -16,11 +16,6 @@ namespace LoreVS.Commands
     [Command(PackageIds.AddToLoreCommand)]
     internal sealed class AddToLoreCommand : BaseCommand<AddToLoreCommand>
     {
-        protected override void BeforeQueryStatus(EventArgs e)
-        {
-            Command.Visible = Command.Enabled = (Package as LoreVSPackage)?.IsSolutionControlled != true;
-        }
-
         protected override async Task ExecuteAsync(OleMenuCmdEventArgs e)
         {
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();

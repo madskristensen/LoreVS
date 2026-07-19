@@ -5,7 +5,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using Community.VisualStudio.Toolkit;
-using Microsoft.VisualStudio.Imaging;
 using Microsoft.VisualStudio.Shell;
 
 namespace LoreVS.UI
@@ -35,7 +34,7 @@ namespace LoreVS.UI
         {
             public Pane()
             {
-                BitmapImageMoniker = KnownMonikers.Changeset;
+                BitmapImageMoniker = LoreMonikers.LoreLogo;
                 ToolBar = new CommandID(PackageGuids.LoreVS, PackageIds.LoreChangesToolbar);
             }
         }
