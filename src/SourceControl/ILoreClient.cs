@@ -117,6 +117,12 @@ namespace LoreVS.SourceControl
         /// </summary>
         LoreCommandResult StageAll(string workingDirectory);
 
+        /// <summary>
+        /// Records that an existing file or directory moved from <paramref name="oldPath"/> to
+        /// <paramref name="newPath"/> without staging its content. Runs entirely offline.
+        /// </summary>
+        LoreCommandResult RecordMove(string workingDirectory, string oldPath, string newPath);
+
         /// <summary>Commits the staged revision with <paramref name="message"/>.</summary>
         LoreCommandResult Commit(string workingDirectory, string message, string identity);
 

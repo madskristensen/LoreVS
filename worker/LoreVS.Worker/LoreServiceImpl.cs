@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -407,6 +408,25 @@ namespace LoreVS.Worker
         }
 
         /// <inheritdoc/>
+        public Task<LoreCommandResult> RecordMoveAsync(string workingDirectory, string oldPath, string newPath, CancellationToken cancellationToken)
+        {
+            if (string.IsNullOrWhiteSpace(oldPath) || string.IsNullOrWhiteSpace(newPath))
+            {
+                return Task.FromResult(LoreCommandResult.Failed("Both the original and new paths are required to record a move."));
+            }
+
+            return ExecuteAsync(identity: null, offline: true, workingDirectory, globalArgs =>
+            {
+                using var args = new LoreFileStageMoveArgs
+                {
+                    FromPath = oldPath,
+                    ToPath = newPath,
+                };
+                Lore.FileStageMove(globalArgs, args).Wait();
+            });
+        }
+
+        /// <inheritdoc/>
         public Task<LoreCommandResult> CommitAsync(string workingDirectory, string message, string identity, CancellationToken cancellationToken)
         {
             if (string.IsNullOrWhiteSpace(message))
@@ -443,7 +463,7 @@ namespace LoreVS.Worker
         }
 
         /// <inheritdoc/>
-        public Task<LoreCommandResult> CommitFilesAsync(string workingDirectory, string[] paths, string message, string identity, bool amend, CancellationToken cancellationToken)
+        public Task<LoreCommandResult> CommitFilesAsync(string workingDirectory, string[] paths, LoreMoveEntry[] moves, string message, string identity, bool amend, CancellationToken cancellationToken)
         {
             if (string.IsNullOrWhiteSpace(message))
             {
@@ -465,8 +485,30 @@ namespace LoreVS.Worker
                     Lore.FileUnstage(globalArgs, unstageArgs).Wait();
                 }
 
-                using (var stageArgs = new LoreFileStageArgs { Paths = paths, Scan = true })
+                var movedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (LoreMoveEntry move in moves ?? Array.Empty<LoreMoveEntry>())
                 {
+                    using var moveArgs = new LoreFileStageMoveArgs
+                    {
+                        FromPath = move.OldPath,
+                        ToPath = move.NewPath,
+                    };
+                    Lore.FileStageMove(globalArgs, moveArgs).Wait();
+                    movedPaths.Add(NormalizePath(workingDirectory, move.NewPath));
+                }
+
+                if (movedPaths.Count > 0)
+                {
+                    using var moveStageArgs = new LoreFileStageArgs { Paths = movedPaths.ToArray(), Scan = false };
+                    Lore.FileStage(globalArgs, moveStageArgs).Wait();
+                }
+
+                string[] ordinaryPaths = paths
+                    .Where(path => !movedPaths.Contains(NormalizePath(workingDirectory, path)))
+                    .ToArray();
+                if (ordinaryPaths.Length > 0)
+                {
+                    using var stageArgs = new LoreFileStageArgs { Paths = ordinaryPaths, Scan = true };
                     Lore.FileStage(globalArgs, stageArgs).Wait();
                 }
 

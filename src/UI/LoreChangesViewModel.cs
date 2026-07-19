@@ -238,9 +238,10 @@ namespace LoreVS.UI
             VS.Events.SolutionEvents.OnAfterOpenFolder += OnFolderChanged;
             VS.Events.SolutionEvents.OnAfterCloseFolder += OnFolderChanged;
 
-            // Saving a document changes its Lore status, so refresh the list to reflect it -
-            // the same trigger the package uses to update Solution Explorer glyphs.
-            VS.Events.DocumentEvents.Saved += OnDocumentSaved;
+            if (_sccService != null)
+            {
+                _sccService.StatusChanged += OnStatusChanged;
+            }
         }
 
         /// <summary>Detaches every workspace event subscribed by <see cref="SubscribeEvents"/>.</summary>
@@ -257,10 +258,13 @@ namespace LoreVS.UI
             VS.Events.SolutionEvents.OnAfterCloseSolution -= ReloadSafe;
             VS.Events.SolutionEvents.OnAfterOpenFolder -= OnFolderChanged;
             VS.Events.SolutionEvents.OnAfterCloseFolder -= OnFolderChanged;
-            VS.Events.DocumentEvents.Saved -= OnDocumentSaved;
+            if (_sccService != null)
+            {
+                _sccService.StatusChanged -= OnStatusChanged;
+            }
         }
 
-        private void OnDocumentSaved(string filePath) => RefreshSafe();
+        private void OnStatusChanged(object sender, EventArgs e) => RefreshSafe();
 
         /// <summary>
         /// Re-resolves the Lore repository binding for the currently open solution or folder and

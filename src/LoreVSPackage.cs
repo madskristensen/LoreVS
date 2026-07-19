@@ -49,6 +49,7 @@ namespace LoreVS
     public sealed partial class LoreVSPackage : ToolkitPackage
     {
         private LoreSccService _sccService = null!;
+        private LoreRepositoryMonitor? _repositoryMonitor;
 
         // The Lore repository root bound to the currently open solution (null when not controlled).
         // Discovered git-style by detecting a .lore folder; nothing is persisted to the .sln.
@@ -87,6 +88,7 @@ namespace LoreVS
             // No .sln persistence: the .lore folder on disk is the source of truth (git-style),
             // so reopening the solution rediscovers it in ApplyControlledBinding.
             _controlledRoot = repositoryRoot;
+            _repositoryMonitor?.SetRepositoryAsync(repositoryRoot).FileAndForget("LoreVS/WatchRepository");
             int bound = ActivateAndBind(solution, repositoryRoot);
             SetControlledContext(true);
             return bound;
@@ -129,6 +131,8 @@ namespace LoreVS
             // Lore .NET SDK in an out-of-process .NET worker over JSON-RPC.
             _sccService = new LoreSccService(this, new LoreBrokeredClient());
             ((IServiceContainer)this).AddService(typeof(LoreSccService), _sccService, promote: true);
+            _repositoryMonitor = new LoreRepositoryMonitor(_sccService);
+            await _repositoryMonitor.InitializeAsync(cancellationToken);
 
             // Do NOT call IVsRegisterScciProvider.RegisterSourceControlProvider here. The provider
             // GUID is also the autoload UI context (see [ProvideAutoLoad(LoreGuids.SccProviderString)]),
@@ -196,6 +200,7 @@ namespace LoreVS
             ThreadHelper.ThrowIfNotOnUIThread();
             _controlledRoot = null;
             SetControlledContext(false);
+            _repositoryMonitor?.SetRepositoryAsync(null).FileAndForget("LoreVS/UnwatchRepository");
         }
 
         /// <summary>
@@ -257,12 +262,14 @@ namespace LoreVS
                 _controlledRoot = detected;
                 ActivateAndBind(solution, detected);
                 SetControlledContext(true);
+                _repositoryMonitor?.SetRepositoryAsync(detected).FileAndForget("LoreVS/WatchRepository");
             }
             else
             {
                 DiagLog.Write("[bind] no .lore root detected -> RefreshAllGlyphs only (provider NOT activated)");
                 _controlledRoot = null;
                 SetControlledContext(false);
+                _repositoryMonitor?.SetRepositoryAsync(null).FileAndForget("LoreVS/UnwatchRepository");
                 _sccService.RefreshAllGlyphs();
             }
         }
@@ -274,18 +281,20 @@ namespace LoreVS
             ThreadHelper.ThrowIfNotOnUIThread();
             if (_sccService != null && _sccService.Active)
             {
-                _sccService.RefreshAllGlyphs();
+                _sccService.NotifyStatusChanged();
             }
         }
 
         protected override void Dispose(bool disposing)
         {
+            ThreadHelper.ThrowIfNotOnUIThread();
             if (disposing)
             {
                 Microsoft.VisualStudio.Shell.Events.SolutionEvents.OnAfterOpenSolution -= OnAfterOpenSolution;
                 Microsoft.VisualStudio.Shell.Events.SolutionEvents.OnAfterCloseSolution -= OnAfterCloseSolution;
                 VS.Events.DocumentEvents.Saved -= OnDocumentSaved;
 
+                _repositoryMonitor?.Dispose();
                 // Tear down the brokered client so its out-of-process Lore worker is stopped.
                 (_sccService?.Client as IDisposable)?.Dispose();
             }

@@ -70,6 +70,12 @@ namespace LoreVS.SourceControl
         /// <summary>Stages every changed file under <paramref name="workingDirectory"/> (scan).</summary>
         Task<LoreCommandResult> StageAllAsync(string workingDirectory, CancellationToken cancellationToken);
 
+        /// <summary>
+        /// Records that an existing file or directory moved from <paramref name="oldPath"/> to
+        /// <paramref name="newPath"/> without staging its content. Runs entirely offline.
+        /// </summary>
+        Task<LoreCommandResult> RecordMoveAsync(string workingDirectory, string oldPath, string newPath, CancellationToken cancellationToken);
+
         /// <summary>Commits the staged revision with <paramref name="message"/>.</summary>
         Task<LoreCommandResult> CommitAsync(string workingDirectory, string message, string identity, CancellationToken cancellationToken);
 
@@ -86,7 +92,7 @@ namespace LoreVS.SourceControl
         /// <c>lore unstage</c> + <c>lore stage &lt;paths&gt;</c> + <c>lore commit</c>). Enables partial
         /// commits from the Lore Changes window.
         /// </summary>
-        Task<LoreCommandResult> CommitFilesAsync(string workingDirectory, string[] paths, string message, string identity, bool amend, CancellationToken cancellationToken);
+        Task<LoreCommandResult> CommitFilesAsync(string workingDirectory, string[] paths, LoreMoveEntry[] moves, string message, string identity, bool amend, CancellationToken cancellationToken);
 
         /// <summary>
         /// Returns every branch in the repository at <paramref name="repositoryRoot"/> (local and
@@ -263,6 +269,19 @@ namespace LoreVS.SourceControl
 
         /// <summary>The branch/revision summary, or <see langword="null"/> when unavailable.</summary>
         public LoreRepositoryInfo? Info { get; set; }
+    }
+
+    /// <summary>
+    /// An exact file move captured by Visual Studio. The package carries this provenance across the
+    /// process boundary because Lore 0.8.x status scans currently downgrade staged moves to add/delete.
+    /// </summary>
+    public sealed class LoreMoveEntry
+    {
+        /// <summary>Absolute, normalized source path.</summary>
+        public string OldPath { get; set; } = string.Empty;
+
+        /// <summary>Absolute, normalized destination path.</summary>
+        public string NewPath { get; set; } = string.Empty;
     }
 
     /// <summary>

@@ -56,6 +56,9 @@ namespace LoreVS.SourceControl
             _client = client ?? throw new ArgumentNullException(nameof(client));
         }
 
+        /// <summary>Raised after repository files change and status caches have been invalidated.</summary>
+        internal event EventHandler? StatusChanged;
+
         /// <summary>Whether Lore is currently the active source control provider.</summary>
         public bool Active => _active;
 
@@ -271,6 +274,14 @@ namespace LoreVS.SourceControl
             ThreadHelper.ThrowIfNotOnUIThread();
             (_client as LoreBrokeredClient)?.InvalidateCache();
             RaiseGlyphsChanged();
+        }
+
+        /// <summary>Invalidates Lore status, repaints SCC glyphs, and refreshes subscribed UI.</summary>
+        internal void NotifyStatusChanged()
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+            RefreshAllGlyphs();
+            StatusChanged?.Invoke(this, EventArgs.Empty);
         }
 
         /// <summary>

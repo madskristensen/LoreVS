@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Pipes;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Community.VisualStudio.Toolkit;
@@ -62,6 +63,8 @@ namespace LoreVS.SourceControl
         private readonly string? _workerPath;
         private readonly ConcurrentDictionary<string, CacheEntry> _cache =
             new ConcurrentDictionary<string, CacheEntry>(StringComparer.OrdinalIgnoreCase);
+        private readonly ConcurrentDictionary<string, LoreMoveEntry> _pendingMoves =
+            new ConcurrentDictionary<string, LoreMoveEntry>(StringComparer.OrdinalIgnoreCase);
 
         private Process? _workerProcess;
         private NamedPipeClientStream? _pipe;
@@ -194,6 +197,7 @@ namespace LoreVS.SourceControl
             {
                 DiagLog.Write($"[rpc] QueryStatus invoking GetRepositoryStatusAsync('{repositoryRoot}')");
                 LoreStatusEntry[] entries = Run(ct => proxy.GetRepositoryStatusAsync(repositoryRoot, ct), StatusCallTimeoutMs);
+                entries = ApplyPendingMoves(repositoryRoot, entries);
                 DiagLog.Write($"[rpc] QueryStatus got {entries.Length} entr(y/ies)");
                 var result = new Dictionary<string, LoreFileStatus>(StringComparer.OrdinalIgnoreCase);
                 foreach (LoreStatusEntry e in entries)
@@ -261,6 +265,7 @@ namespace LoreVS.SourceControl
                 // Refresh the status cache from the same pass so a later GetRepositoryStatus call
                 // (e.g. glyph refresh) is served from cache instead of issuing another status scan.
                 LoreStatusEntry[] entries = snapshot.Files ?? Array.Empty<LoreStatusEntry>();
+                snapshot.Files = entries = ApplyPendingMoves(repositoryRoot, entries);
                 var statuses = new Dictionary<string, LoreFileStatus>(StringComparer.OrdinalIgnoreCase);
                 foreach (LoreStatusEntry e in entries)
                 {
@@ -405,24 +410,83 @@ namespace LoreVS.SourceControl
         }
 
         /// <inheritdoc/>
+        public LoreCommandResult RecordMove(string workingDirectory, string oldPath, string newPath)
+        {
+            InvalidateCache();
+            string normalizedOldPath = ResolvePath(workingDirectory, oldPath);
+            string normalizedNewPath = ResolvePath(workingDirectory, newPath);
+            LoreCommandResult result = Invoke((proxy, ct) =>
+                proxy.RecordMoveAsync(workingDirectory, normalizedOldPath, normalizedNewPath, ct));
+            if (result.Success)
+            {
+                string originalPath = normalizedOldPath;
+                if (_pendingMoves.TryRemove(normalizedOldPath, out LoreMoveEntry? previousMove))
+                {
+                    originalPath = previousMove.OldPath;
+                }
+
+                if (string.Equals(originalPath, normalizedNewPath, StringComparison.OrdinalIgnoreCase))
+                {
+                    _pendingMoves.TryRemove(normalizedNewPath, out _);
+                    return result;
+                }
+
+                _pendingMoves[normalizedNewPath] = new LoreMoveEntry
+                {
+                    OldPath = originalPath,
+                    NewPath = normalizedNewPath,
+                };
+            }
+
+            return result;
+        }
+
+        /// <inheritdoc/>
         public LoreCommandResult Commit(string workingDirectory, string message, string identity)
         {
             InvalidateCache();
-            return Invoke((proxy, ct) => proxy.CommitAsync(workingDirectory, message, identity, ct));
+            LoreCommandResult result = Invoke((proxy, ct) => proxy.CommitAsync(workingDirectory, message, identity, ct));
+            if (result.Success)
+            {
+                ClearPendingMoves(workingDirectory);
+            }
+
+            return result;
         }
 
         /// <inheritdoc/>
         public LoreCommandResult Amend(string workingDirectory, string message, string identity)
         {
             InvalidateCache();
-            return Invoke((proxy, ct) => proxy.AmendAsync(workingDirectory, message, identity, ct));
+            LoreCommandResult result = Invoke((proxy, ct) => proxy.AmendAsync(workingDirectory, message, identity, ct));
+            if (result.Success)
+            {
+                ClearPendingMoves(workingDirectory);
+            }
+
+            return result;
         }
 
         /// <inheritdoc/>
         public LoreCommandResult CommitFiles(string workingDirectory, string[] paths, string message, string identity, bool amend)
         {
             InvalidateCache();
-            return Invoke((proxy, ct) => proxy.CommitFilesAsync(workingDirectory, paths, message, identity, amend, ct));
+            var selected = new HashSet<string>(paths.Select(path => ResolvePath(workingDirectory, path)), StringComparer.OrdinalIgnoreCase);
+            LoreMoveEntry[] moves = _pendingMoves.Values
+                .Where(move => selected.Contains(move.NewPath))
+                .ToArray();
+
+            LoreCommandResult result = Invoke((proxy, ct) =>
+                proxy.CommitFilesAsync(workingDirectory, paths, moves, message, identity, amend, ct));
+            if (result.Success)
+            {
+                foreach (LoreMoveEntry move in moves)
+                {
+                    _pendingMoves.TryRemove(move.NewPath, out _);
+                }
+            }
+
+            return result;
         }
 
         /// <inheritdoc/>
@@ -443,7 +507,21 @@ namespace LoreVS.SourceControl
         public LoreCommandResult ResetFiles(string workingDirectory, string[] paths)
         {
             InvalidateCache();
-            return Invoke((proxy, ct) => proxy.ResetFilesAsync(workingDirectory, paths, ct));
+            LoreCommandResult result = Invoke((proxy, ct) => proxy.ResetFilesAsync(workingDirectory, paths, ct));
+            if (result.Success)
+            {
+                string[] resetPaths = paths.Select(path => ResolvePath(workingDirectory, path)).ToArray();
+                foreach (LoreMoveEntry move in _pendingMoves.Values)
+                {
+                    if (resetPaths.Any(path =>
+                        IsPathWithinRoot(path, move.OldPath) || IsPathWithinRoot(path, move.NewPath)))
+                    {
+                        _pendingMoves.TryRemove(move.NewPath, out _);
+                    }
+                }
+            }
+
+            return result;
         }
 
         /// <inheritdoc/>
@@ -707,6 +785,59 @@ namespace LoreVS.SourceControl
             }
         }
 
+        private void ClearPendingMoves(string repositoryRoot)
+        {
+            foreach (string path in _pendingMoves.Keys)
+            {
+                if (IsPathWithinRoot(repositoryRoot, path))
+                {
+                    _pendingMoves.TryRemove(path, out _);
+                }
+            }
+        }
+
+        private LoreStatusEntry[] ApplyPendingMoves(string repositoryRoot, LoreStatusEntry[] entries)
+        {
+            var result = new List<LoreStatusEntry>(entries ?? Array.Empty<LoreStatusEntry>());
+            foreach (LoreMoveEntry move in _pendingMoves.Values)
+            {
+                if (!IsPathWithinRoot(repositoryRoot, move.NewPath))
+                {
+                    continue;
+                }
+
+                result.RemoveAll(entry =>
+                    string.Equals(NormalizePath(entry.Path), move.OldPath, StringComparison.OrdinalIgnoreCase));
+
+                LoreStatusEntry? destination = result.Find(entry =>
+                    string.Equals(NormalizePath(entry.Path), move.NewPath, StringComparison.OrdinalIgnoreCase));
+                if (destination == null && File.Exists(move.NewPath))
+                {
+                    destination = new LoreStatusEntry { Path = move.NewPath };
+                    result.Add(destination);
+                }
+
+                if (destination != null)
+                {
+                    destination.Status = LoreFileStatus.Renamed;
+                    destination.OriginalPath = move.OldPath;
+                }
+            }
+
+            return result.ToArray();
+        }
+
+        private static string ResolvePath(string repositoryRoot, string path) =>
+            NormalizePath(Path.IsPathRooted(path) ? path : Path.Combine(repositoryRoot, path));
+
+        internal static bool IsPathWithinRoot(string repositoryRoot, string path)
+        {
+            string root = NormalizePath(repositoryRoot);
+            string candidate = NormalizePath(path);
+            return string.Equals(root, candidate, StringComparison.OrdinalIgnoreCase) ||
+                candidate.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+        }
+
         private static string NormalizePath(string path)
         {
             try
@@ -749,6 +880,7 @@ namespace LoreVS.SourceControl
             }
 
             _cache.Clear();
+            _pendingMoves.Clear();
         }
 
         private readonly struct CacheEntry

@@ -19,6 +19,7 @@ namespace LoreVS.Tests
     /// unit-test suite still runs on machines without the .NET 9 payload.
     /// </summary>
     [TestClass]
+    [TestCategory("Integration")]
     public class LoreBrokeredClientIntegrationTests
     {
         private string _tempRoot = string.Empty;
@@ -153,6 +154,106 @@ namespace LoreVS.Tests
             LoreFileStatus status = client.GetStatus(Path.Combine(repoPath, "file.txt"));
 
             Assert.AreEqual(LoreFileStatus.Modified, status);
+        }
+
+        [TestMethod]
+        public void RecordMove_ReportsRenamedFileWithOriginalPath()
+        {
+            string worker = RequireWorker();
+            string repoPath = Path.Combine(_tempRoot, "repo");
+            SeedRepository(worker, repoPath);
+
+            using var client = new LoreBrokeredClient(worker);
+            Assert.IsTrue(client.StageAll(repoPath).Success);
+            Assert.IsTrue(client.Commit(repoPath, "Clean base", "test@lorevs").Success);
+
+            string oldPath = Path.GetFullPath(Path.Combine(repoPath, "file.txt"));
+            string intermediatePath = Path.GetFullPath(Path.Combine(repoPath, "renamed.txt"));
+            File.Move(oldPath, intermediatePath);
+
+            LoreCommandResult result = client.RecordMove(repoPath, oldPath, intermediatePath);
+            Assert.IsTrue(result.Success, "Recording the move failed: " + result.CombinedText);
+
+            string newPath = Path.GetFullPath(Path.Combine(repoPath, "renamed-again.txt"));
+            File.Move(intermediatePath, newPath);
+            result = client.RecordMove(repoPath, intermediatePath, newPath);
+            Assert.IsTrue(result.Success, "Recording the second move failed: " + result.CombinedText);
+
+            LoreRepositorySnapshot snapshot = client.GetRepositorySnapshot(repoPath);
+            LoreStatusEntry? renamed = snapshot.Files.FirstOrDefault(entry =>
+                string.Equals(Path.GetFullPath(entry.Path), newPath, StringComparison.OrdinalIgnoreCase));
+
+            Assert.IsNotNull(renamed, "The moved file should appear at its new path.");
+            Assert.AreEqual(LoreFileStatus.Renamed, renamed!.Status);
+            Assert.AreEqual(
+                oldPath,
+                Path.GetFullPath(renamed.OriginalPath),
+                true,
+                "The move should retain its original path.");
+
+            LoreCommandResult commit = client.CommitFiles(
+                repoPath, new[] { newPath }, "Rename file", "test@lorevs", amend: false);
+            Assert.IsTrue(commit.Success, "Committing the move failed: " + commit.CombinedText);
+
+            LoreRepositorySnapshot committedSnapshot = client.GetRepositorySnapshot(repoPath);
+            Assert.IsFalse(committedSnapshot.Files.Any(entry =>
+                string.Equals(Path.GetFullPath(entry.Path), newPath, StringComparison.OrdinalIgnoreCase)),
+                "The committed move should no longer appear as a pending change. Status: " +
+                string.Join(", ", committedSnapshot.Files.Select(entry => entry.Status + ":" + entry.Path + "<-" + entry.OriginalPath)));
+        }
+
+        [TestMethod]
+        public void Commit_AfterRecordedMove_ClearsPendingProvenance()
+        {
+            string worker = RequireWorker();
+            string repoPath = Path.Combine(_tempRoot, "repo");
+            SeedRepository(worker, repoPath);
+
+            using var client = new LoreBrokeredClient(worker);
+            Assert.IsTrue(client.StageAll(repoPath).Success);
+            Assert.IsTrue(client.Commit(repoPath, "Clean base", "test@lorevs").Success);
+
+            string oldPath = Path.GetFullPath(Path.Combine(repoPath, "file.txt"));
+            string newPath = Path.GetFullPath(Path.Combine(repoPath, "renamed.txt"));
+            File.Move(oldPath, newPath);
+
+            LoreCommandResult move = client.RecordMove(repoPath, oldPath, newPath);
+            Assert.IsTrue(move.Success, "Recording the move failed: " + move.CombinedText);
+
+            LoreCommandResult commit = client.Commit(repoPath, "Rename file", "test@lorevs");
+            Assert.IsTrue(commit.Success, "Committing the move failed: " + commit.CombinedText);
+
+            LoreRepositorySnapshot snapshot = client.GetRepositorySnapshot(repoPath);
+            Assert.IsFalse(snapshot.Files.Any(entry =>
+                string.Equals(Path.GetFullPath(entry.Path), newPath, StringComparison.OrdinalIgnoreCase)),
+                "A successful full commit should clear pending rename provenance.");
+        }
+
+        [TestMethod]
+        public void ResetFiles_AfterRecordedMove_ClearsPendingProvenance()
+        {
+            string worker = RequireWorker();
+            string repoPath = Path.Combine(_tempRoot, "repo");
+            SeedRepository(worker, repoPath);
+
+            using var client = new LoreBrokeredClient(worker);
+            Assert.IsTrue(client.StageAll(repoPath).Success);
+            Assert.IsTrue(client.Commit(repoPath, "Clean base", "test@lorevs").Success);
+
+            string oldPath = Path.GetFullPath(Path.Combine(repoPath, "file.txt"));
+            string newPath = Path.GetFullPath(Path.Combine(repoPath, "renamed.txt"));
+            File.Move(oldPath, newPath);
+
+            LoreCommandResult move = client.RecordMove(repoPath, oldPath, newPath);
+            Assert.IsTrue(move.Success, "Recording the move failed: " + move.CombinedText);
+
+            LoreCommandResult reset = client.ResetFiles(repoPath, new[] { newPath });
+            Assert.IsTrue(reset.Success, "Resetting the move failed: " + reset.CombinedText);
+
+            Assert.IsTrue(File.Exists(newPath), "The reset operation should leave the working file in place.");
+            LoreRepositorySnapshot snapshot = client.GetRepositorySnapshot(repoPath);
+            Assert.IsFalse(snapshot.Files.Any(entry => entry.Status == LoreFileStatus.Renamed),
+                "Resetting a move should clear its pending rename provenance.");
         }
 
         [TestMethod]

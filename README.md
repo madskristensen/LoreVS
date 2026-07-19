@@ -64,6 +64,9 @@ indicators and arranges every changed file in a folder tree back to the
 repository root, each file showing a status badge (M, A, D, R, C) on the right.
 Renamed or moved files show an **R** badge, and hovering it reveals the path the
 file was moved from.
+Renames performed in Solution Explorer are tracked automatically. Changes made
+outside Visual Studio are detected through Visual Studio's shared file-change
+service and automatically refresh the window and editor status glyphs.
 From here you can:
 
 - Pick exactly which files to include in the next commit. Every changed file
