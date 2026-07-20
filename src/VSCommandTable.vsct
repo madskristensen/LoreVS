@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <CommandTable xmlns="http://schemas.microsoft.com/VisualStudio/2005-10-18/CommandTable" xmlns:xs="http://www.w3.org/2001/XMLSchema">
 
   <Extern href="stdidcmd.h"/>
@@ -28,6 +28,13 @@
         <CommandFlag>DefaultDocked</CommandFlag>
         <Strings>
           <ButtonText>Lore Changes</ButtonText>
+        </Strings>
+      </Menu>
+      <!-- Toolbar hosted at the top of the Lore History tool window. -->
+      <Menu guid="LoreVS" id="LoreHistoryToolbar" type="ToolWindowToolbar">
+        <CommandFlag>DefaultDocked</CommandFlag>
+        <Strings>
+          <ButtonText>Lore History</ButtonText>
         </Strings>
       </Menu>
     </Menus>
@@ -60,6 +67,10 @@
       <!-- Group on the Lore Changes tool window toolbar that holds its buttons. -->
       <Group guid="LoreVS" id="LoreChangesToolbarGroup" priority="0x0100">
         <Parent guid="LoreVS" id="LoreChangesToolbar"/>
+      </Group>
+      <!-- Group on the Lore History tool window toolbar that holds its buttons. -->
+      <Group guid="LoreVS" id="LoreHistoryToolbarGroup" priority="0x0100">
+        <Parent guid="LoreVS" id="LoreHistoryToolbar"/>
       </Group>
     </Groups>
 
@@ -129,6 +140,19 @@
         </Strings>
       </Button>
 
+      <!-- Opens the read-only Lore History tool window for the current repository. Gated to Lore
+           repositories via the visibility constraint below so it is hidden elsewhere. -->
+      <Button guid="LoreVS" id="ShowHistoryCommand" priority="0x0120" type="Button">
+        <Parent guid="LoreVS" id="MyMenuGroup" />
+        <Icon guid="ImageCatalogGuid" id="History" />
+        <CommandFlag>IconIsMoniker</CommandFlag>
+        <CommandFlag>DynamicVisibility</CommandFlag>
+        <Strings>
+          <ButtonText>View History...</ButtonText>
+          <LocCanonicalName>.LoreVS.ViewHistory</LocCanonicalName>
+        </Strings>
+      </Button>
+
       <!-- Branch dropdown on the Lore Changes toolbar; shows the current branch name and
            opens the switch/create/merge menu when clicked. -->
       <Button guid="LoreVS" id="BranchCommand" priority="0x0100" type="Button">
@@ -171,6 +195,16 @@
           <LocCanonicalName>.LoreVS.RefreshChanges</LocCanonicalName>
         </Strings>
       </Button>
+      <!-- Lore History tool window toolbar: reloads the revision log on demand. -->
+      <Button guid="LoreVS" id="RefreshHistoryCommand" priority="0x0100" type="Button">
+        <Parent guid="LoreVS" id="LoreHistoryToolbarGroup" />
+        <Icon guid="ImageCatalogGuid" id="Refresh" />
+        <CommandFlag>IconIsMoniker</CommandFlag>
+        <Strings>
+          <ButtonText>Refresh</ButtonText>
+          <LocCanonicalName>.LoreVS.RefreshHistory</LocCanonicalName>
+        </Strings>
+      </Button>
       </Buttons>
   </Commands>
 
@@ -184,6 +218,7 @@
     <VisibilityItem guid="LoreVS" id="IgnoreAndUntrackCommand" context="guidLoreUiContext" />
     <VisibilityItem guid="LoreVS" id="UndoChangesCommand" context="guidLoreUiContext" />
     <VisibilityItem guid="LoreVS" id="CompareUnmodifiedCommand" context="guidLoreUiContext" />
+    <VisibilityItem guid="LoreVS" id="ShowHistoryCommand" context="guidLoreUiContext" />
   </VisibilityConstraints>
   <CommandPlacements>
     <!-- Reuse the same anchor group (and therefore the Lore submenu) on the Open Folder
@@ -223,6 +258,10 @@
       <IDSymbol name="PushCommand" value="0x0109" />
       <IDSymbol name="RefreshChangesCommand" value="0x010A" />
       <IDSymbol name="BranchCommand" value="0x010E" />
+      <IDSymbol name="ShowHistoryCommand" value="0x010F" />
+      <IDSymbol name="LoreHistoryToolbar" value="0x000B" />
+      <IDSymbol name="LoreHistoryToolbarGroup" value="0x000C" />
+      <IDSymbol name="RefreshHistoryCommand" value="0x0110" />
     </GuidSymbol>
 
     <!-- Workspace Explorer (Open Folder) context menu. -->

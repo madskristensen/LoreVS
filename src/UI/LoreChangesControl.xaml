@@ -246,11 +246,23 @@
                       PreviewMouseRightButtonDown="OnTreeRightButtonDown"
                       ContextMenuOpening="OnContextMenuOpening">
                 <TreeView.ContextMenu>
-                    <ContextMenu>
-                        <MenuItem x:Name="OpenDiffMenuItem" Header="Open Diff" Click="OnOpenDiffMenu" />
-                        <MenuItem Header="Open File" Click="OnOpenFileMenu" />
+                    <ContextMenu x:Name="ChangesContextMenu">
+                        <MenuItem x:Name="OpenDiffMenuItem" Header="Open Diff" Click="OnOpenDiffMenu">
+                            <MenuItem.Icon>
+                                <imaging:CrispImage Width="16" Height="16" Moniker="{x:Static catalog:KnownMonikers.CompareFiles}" />
+                            </MenuItem.Icon>
+                        </MenuItem>
+                        <MenuItem Header="Open File" Click="OnOpenFileMenu">
+                            <MenuItem.Icon>
+                                <imaging:CrispImage Width="16" Height="16" Moniker="{x:Static catalog:KnownMonikers.Open}" />
+                            </MenuItem.Icon>
+                        </MenuItem>
                         <Separator />
-                        <MenuItem Header="Discard Changes..." Click="OnDiscardMenu" />
+                        <MenuItem Header="Discard Changes..." Click="OnDiscardMenu">
+                            <MenuItem.Icon>
+                                <imaging:CrispImage Width="16" Height="16" Moniker="{x:Static catalog:KnownMonikers.Undo}" />
+                            </MenuItem.Icon>
+                        </MenuItem>
                     </ContextMenu>
                 </TreeView.ContextMenu>
                 <TreeView.ItemTemplate>

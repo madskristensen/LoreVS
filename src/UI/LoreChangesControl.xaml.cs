@@ -39,6 +39,11 @@ namespace LoreVS.UI
             viewModel.Nodes.CollectionChanged += OnNodesChanged;
             SyncRootNodes();
 
+            // Fully theme the row context menu against VS environment colors. The toolkit's
+            // UseVsTheme only recolors a few brushes and leaves the icon gutter, hover, and border
+            // looking like a plain WPF menu, so re-template it the same way the branch menu is themed.
+            ThemedContextMenuHelper.ApplyVsTheme(ChangesContextMenu);
+
             viewModel.PropertyChanged += OnViewModelPropertyChanged;
             UpdateRepositoryVisibility();
 

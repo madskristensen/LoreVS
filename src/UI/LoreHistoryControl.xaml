@@ -1,0 +1,117 @@
+<UserControl x:Class="LoreVS.UI.LoreHistoryControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:toolkit="clr-namespace:Community.VisualStudio.Toolkit;assembly=Community.VisualStudio.Toolkit"
+             xmlns:vsui="clr-namespace:Microsoft.VisualStudio.PlatformUI;assembly=Microsoft.VisualStudio.Shell.15.0"
+             toolkit:Themes.UseVsTheme="True"
+             mc:Ignorable="d"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             d:DesignHeight="500" d:DesignWidth="360">
+
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+    </UserControl.Resources>
+
+    <Grid Margin="8">
+        <!-- Shown when the open solution/folder is not under Lore source control. -->
+        <TextBlock x:Name="NoRepositoryMessage"
+                   Text="This solution or folder is not under Lore source control."
+                   TextWrapping="Wrap"
+                   VerticalAlignment="Center" HorizontalAlignment="Center"
+                   TextAlignment="Center" Opacity="0.7"
+                   Visibility="Collapsed" />
+
+        <DockPanel x:Name="RepositoryPanel">
+            <!-- Status line -->
+            <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusText}"
+                       Margin="0,8,0,0" Opacity="0.8" TextTrimming="CharacterEllipsis" />
+
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*" MinHeight="120" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" MinHeight="80" />
+                </Grid.RowDefinitions>
+
+                <!-- Revisions: a virtualized list so a repository with thousands of revisions never
+                     realizes one visual element per revision. -->
+                <DockPanel Grid.Row="0">
+                    <TextBlock DockPanel.Dock="Top" FontWeight="Bold" Margin="0,0,0,6"
+                               Text="{Binding Revisions.Count, StringFormat=History ({0})}" />
+
+                    <Button DockPanel.Dock="Bottom" x:Name="LoadMoreButton"
+                            Content="Load more" Margin="0,6,0,0" Padding="8,2"
+                            HorizontalAlignment="Left"
+                            Click="OnLoadMoreClick"
+                            Visibility="{Binding CanLoadMore, Converter={StaticResource BoolToVisibility}}"
+                            IsEnabled="{Binding CanLoadMore}" />
+
+                    <ListBox x:Name="RevisionsList"
+                             ItemsSource="{Binding Revisions}"
+                             SelectedItem="{Binding SelectedRevision, Mode=TwoWay}"
+                             BorderThickness="0"
+                             HorizontalContentAlignment="Stretch"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             VirtualizingPanel.IsVirtualizing="True"
+                             VirtualizingPanel.VirtualizationMode="Recycling">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,2" ToolTip="{Binding RowToolTip}">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <TextBlock Grid.Row="0" Text="{Binding MessageFirstLine}"
+                                               TextTrimming="CharacterEllipsis" />
+                                    <StackPanel Grid.Row="1" Orientation="Horizontal" Opacity="0.7">
+                                        <TextBlock Text="{Binding ShortHash}" FontFamily="Consolas" />
+                                        <TextBlock Text="{Binding AuthorAndTime}" Margin="8,0,0,0"
+                                                   TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </DockPanel>
+
+                <GridSplitter Grid.Row="1" Height="4" HorizontalAlignment="Stretch"
+                              Background="Transparent" Margin="0,4" />
+
+                <TextBlock Grid.Row="2" FontWeight="Bold" Margin="0,0,0,6"
+                           Text="{Binding SelectedRevisionChanges.Count, StringFormat=Changed files ({0})}" />
+
+                <!-- Changed files of the selected revision, loaded lazily on selection. Double-click
+                     opens a diff against the revision's direct parent. -->
+                <ListBox x:Name="FilesList" Grid.Row="3"
+                         ItemsSource="{Binding SelectedRevisionChanges}"
+                         BorderThickness="0"
+                         HorizontalContentAlignment="Stretch"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         VirtualizingPanel.IsVirtualizing="True"
+                         VirtualizingPanel.VirtualizationMode="Recycling"
+                         MouseDoubleClick="OnFileDoubleClick">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid ToolTip="{Binding RelativePath}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="{Binding StatusBadge}"
+                                           Width="16" TextAlignment="Center" Opacity="0.8" />
+                                <TextBlock Grid.Column="1" Text="{Binding FileName}" Margin="4,0,0,0"
+                                           TextTrimming="CharacterEllipsis" />
+                                <TextBlock Grid.Column="2" Text="{Binding Directory}" Margin="8,0,0,0"
+                                           Opacity="0.6" TextTrimming="CharacterEllipsis"
+                                           HorizontalAlignment="Right" />
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Grid>
+        </DockPanel>
+    </Grid>
+</UserControl>

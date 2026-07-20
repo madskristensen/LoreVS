@@ -1014,6 +1014,220 @@ namespace LoreVS.Worker
             });
         }
 
+        /// <inheritdoc/>
+        public async Task<LoreRevisionPage> GetRevisionHistoryAsync(string repositoryRoot, string startAfterRevision, int pageSize, CancellationToken cancellationToken)
+        {
+            var page = new LoreRevisionPage();
+            if (string.IsNullOrEmpty(repositoryRoot) || pageSize <= 0)
+            {
+                return page;
+            }
+
+            startAfterRevision ??= string.Empty;
+            bool continuation = !string.IsNullOrEmpty(startAfterRevision);
+
+            // Over-fetch by one to detect whether older revisions remain. When paging from a given
+            // hash the native API repeats that (inclusive) start revision, so request one more to
+            // absorb the duplicate that is dropped below.
+            int fetch = pageSize + 1 + (continuation ? 1 : 0);
+
+            // Branch is opaque (a CONTEXT metadata value) in the history stream, so stamp each entry
+            // with the current branch name looked up separately. Best-effort - a failure here must
+            // not fail the whole history request.
+            string branchName = await TryGetCurrentBranchNameAsync(repositoryRoot).ConfigureAwait(false);
+
+            var entries = new List<LoreRevisionEntry>();
+            LoreRevisionEntry? current = null;
+
+            // The history stream emits one REVISION_HISTORY_ENTRY per revision followed by that
+            // revision's METADATA events (message, created-by author, timestamp), so the metadata is
+            // attributed to the most recent entry. Gathering both from the single pass avoids a
+            // per-revision RevisionInfo round trip.
+            await RunExclusiveAsync(() =>
+            {
+                using var globalArgs = new LoreGlobalArgs { RepositoryPath = repositoryRoot, Offline = true };
+                using var historyArgs = new LoreRevisionHistoryArgs
+                {
+                    Revision = startAfterRevision,
+                    Length = (uint)fetch,
+                };
+
+                Lore.RevisionHistory(globalArgs, historyArgs).Callback((loreEvent, userContext) =>
+                {
+                    // Never let an exception escape into the native callback: a throw across the
+                    // managed/native boundary can leave the SDK's event loop waiting forever.
+                    try
+                    {
+                        if (loreEvent.Tag == LoreEventTag.REVISION_HISTORY_ENTRY)
+                        {
+                            LoreRevisionHistoryEntryEventDataFFI entry = loreEvent.GetData<LoreRevisionHistoryEntryEventDataFFI>();
+                            current = new LoreRevisionEntry
+                            {
+                                RevisionHash = LoreRevisionMapper.ToHex(entry.Revision.Data),
+                                RevisionNumber = (long)entry.RevisionNumber,
+                                ParentRevisionHash = LoreRevisionMapper.ParentHash(entry.Parent),
+                                BranchName = branchName,
+                            };
+                            entries.Add(current);
+                        }
+                        else if (loreEvent.Tag == LoreEventTag.METADATA && current != null)
+                        {
+                            LoreMetadataEventDataFFI meta = loreEvent.GetData<LoreMetadataEventDataFFI>();
+                            ApplyRevisionMetadata(current, meta);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.Error.WriteLine("[LoreVS.Worker] revision history callback failed: " + ex);
+                    }
+                }).Wait();
+            }).ConfigureAwait(false);
+
+            // Drop the inclusive start revision the native API repeats when paging from a hash.
+            if (continuation && entries.Count > 0 &&
+                string.Equals(entries[0].RevisionHash, startAfterRevision, StringComparison.OrdinalIgnoreCase))
+            {
+                entries.RemoveAt(0);
+            }
+
+            page.HasMore = entries.Count > pageSize;
+            if (entries.Count > pageSize)
+            {
+                entries.RemoveRange(pageSize, entries.Count - pageSize);
+            }
+
+            page.Entries = entries.ToArray();
+            return page;
+        }
+
+        /// <inheritdoc/>
+        public async Task<LoreRevisionChange[]> GetRevisionChangesAsync(string repositoryRoot, string revision, CancellationToken cancellationToken)
+        {
+            if (string.IsNullOrEmpty(repositoryRoot) || string.IsNullOrEmpty(revision))
+            {
+                return Array.Empty<LoreRevisionChange>();
+            }
+
+            var changes = new List<LoreRevisionChange>();
+
+            // RevisionInfo with Delta emits one REVISION_INFO_DELTA per file the revision touched,
+            // relative to its direct parent. This is read-only and never mutates the working tree.
+            await RunExclusiveAsync(() =>
+            {
+                using var globalArgs = new LoreGlobalArgs { RepositoryPath = repositoryRoot, Offline = true };
+                using var infoArgs = new LoreRevisionInfoArgs { Revision = revision, Delta = true };
+
+                Lore.RevisionInfo(globalArgs, infoArgs).Callback((loreEvent, userContext) =>
+                {
+                    try
+                    {
+                        if (loreEvent.Tag != LoreEventTag.REVISION_INFO_DELTA)
+                        {
+                            return;
+                        }
+
+                        LoreRevisionInfoDeltaEventDataFFI delta = loreEvent.GetData<LoreRevisionInfoDeltaEventDataFFI>();
+                        LoreFileStatus status = LoreRevisionMapper.MapDelta(delta.Action, delta.FlagModify);
+
+                        // A clean KEEP is a file carried unchanged into the revision; only surface the
+                        // files the revision actually changed.
+                        if (status == LoreFileStatus.Unchanged)
+                        {
+                            return;
+                        }
+
+                        changes.Add(new LoreRevisionChange
+                        {
+                            Path = NormalizePath(repositoryRoot, delta.Path),
+                            Status = status,
+                        });
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.Error.WriteLine("[LoreVS.Worker] revision changes callback failed: " + ex);
+                    }
+                }).Wait();
+            }).ConfigureAwait(false);
+
+            return changes.ToArray();
+        }
+
+        /// <summary>
+        /// Copies a revision metadata event into the corresponding <see cref="LoreRevisionEntry"/>
+        /// member. Only the well-known keys the history window needs are read; unknown keys and
+        /// non-matching value tags are ignored so an SDK addition can never throw here.
+        /// </summary>
+        private static void ApplyRevisionMetadata(LoreRevisionEntry entry, LoreMetadataEventDataFFI meta)
+        {
+            switch (meta.Key)
+            {
+                case "message":
+                    if (meta.Value.Tag == LoreMetadataTag.STRING)
+                    {
+                        entry.Message = meta.Value.String ?? string.Empty;
+                    }
+
+                    break;
+                case "created-by":
+                    if (meta.Value.Tag == LoreMetadataTag.STRING)
+                    {
+                        entry.Author = meta.Value.String ?? string.Empty;
+                    }
+
+                    break;
+                case "timestamp":
+                    if (meta.Value.Tag == LoreMetadataTag.NUMERIC)
+                    {
+                        entry.TimestampUnixMs = (long)meta.Value.Numeric;
+                    }
+
+                    break;
+            }
+        }
+
+        /// <summary>
+        /// Returns the name of the current branch, or an empty string when it cannot be determined.
+        /// Used to stamp history entries with a branch name (the history stream only carries the
+        /// branch as an opaque context value). Best-effort and offline.
+        /// </summary>
+        private static async Task<string> TryGetCurrentBranchNameAsync(string repositoryRoot)
+        {
+            string branch = string.Empty;
+            try
+            {
+                await RunExclusiveAsync(() =>
+                {
+                    using var globalArgs = new LoreGlobalArgs { RepositoryPath = repositoryRoot, Offline = true };
+                    using var args = new LoreBranchListArgs { Archived = false };
+
+                    Lore.BranchList(globalArgs, args).Callback((loreEvent, userContext) =>
+                    {
+                        try
+                        {
+                            if (loreEvent.Tag == LoreEventTag.BRANCH_LIST_ENTRY)
+                            {
+                                LoreBranchListEntryEventDataFFI entry = loreEvent.GetData<LoreBranchListEntryEventDataFFI>();
+                                if (entry.IsCurrent)
+                                {
+                                    branch = entry.Name ?? string.Empty;
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.Error.WriteLine("[LoreVS.Worker] current branch callback failed: " + ex);
+                        }
+                    }).Wait();
+                }).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine("[LoreVS.Worker] current branch lookup failed: " + ex);
+            }
+
+            return branch;
+        }
+
         /// <summary>
         /// Runs a write operation against a configured <see cref="LoreGlobalArgs"/> and maps the
         /// outcome to a <see cref="LoreCommandResult"/>. The SDK throws on a non-zero result; any

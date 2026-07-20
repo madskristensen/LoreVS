@@ -530,6 +530,58 @@ namespace LoreVS.SourceControl
             return Invoke((proxy, ct) => proxy.WriteFileAtRevisionAsync(workingDirectory, relativePath, revision, outputPath, ct));
         }
 
+        /// <inheritdoc/>
+        public LoreRevisionPage GetRevisionHistory(string repositoryRoot, string startAfterRevision, int pageSize)
+        {
+            if (string.IsNullOrEmpty(repositoryRoot) || pageSize <= 0)
+            {
+                return new LoreRevisionPage();
+            }
+
+            ILoreWorkerContract? proxy = GetProxy();
+            if (proxy == null)
+            {
+                return new LoreRevisionPage();
+            }
+
+            try
+            {
+                return Run(ct => proxy.GetRevisionHistoryAsync(repositoryRoot, startAfterRevision ?? string.Empty, pageSize, ct), StatusCallTimeoutMs)
+                    ?? new LoreRevisionPage();
+            }
+            catch (Exception ex)
+            {
+                HandleCallFailure(ex);
+                return new LoreRevisionPage();
+            }
+        }
+
+        /// <inheritdoc/>
+        public LoreRevisionChange[] GetRevisionChanges(string repositoryRoot, string revision)
+        {
+            if (string.IsNullOrEmpty(repositoryRoot) || string.IsNullOrEmpty(revision))
+            {
+                return Array.Empty<LoreRevisionChange>();
+            }
+
+            ILoreWorkerContract? proxy = GetProxy();
+            if (proxy == null)
+            {
+                return Array.Empty<LoreRevisionChange>();
+            }
+
+            try
+            {
+                return Run(ct => proxy.GetRevisionChangesAsync(repositoryRoot, revision, ct), StatusCallTimeoutMs)
+                    ?? Array.Empty<LoreRevisionChange>();
+            }
+            catch (Exception ex)
+            {
+                HandleCallFailure(ex);
+                return Array.Empty<LoreRevisionChange>();
+            }
+        }
+
         /// <summary>Clears any cached status so the next query re-runs against the worker.</summary>
         public void InvalidateCache() => _cache.Clear();
 

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -58,6 +58,10 @@ namespace LoreVS.SourceControl
 
         /// <summary>Raised after repository files change and status caches have been invalidated.</summary>
         internal event EventHandler? StatusChanged;
+
+        /// <summary>Raised after a Lore operation that changes the revision history (commit, pull,
+        /// branch switch/create, merge) completes, so history views can refresh without polling.</summary>
+        internal event EventHandler? RepositoryHistoryChanged;
 
         /// <summary>Whether Lore is currently the active source control provider.</summary>
         public bool Active => _active;
@@ -282,6 +286,18 @@ namespace LoreVS.SourceControl
             ThreadHelper.ThrowIfNotOnUIThread();
             RefreshAllGlyphs();
             StatusChanged?.Invoke(this, EventArgs.Empty);
+        }
+
+        /// <summary>
+        /// Signals that a Lore operation changed the revision history (a new revision was created or
+        /// fetched, or the current branch moved). Raised only by explicit operations in this extension
+        /// - not by working-tree file edits - so the Lore History window refreshes on commits, pulls,
+        /// and branch changes without reloading on every focus change.
+        /// </summary>
+        internal void NotifyHistoryChanged()
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+            RepositoryHistoryChanged?.Invoke(this, EventArgs.Empty);
         }
 
         /// <summary>

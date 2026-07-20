@@ -44,6 +44,10 @@ namespace LoreVS
         public const int PushCommand = 0x0109;
         public const int RefreshChangesCommand = 0x010A;
         public const int BranchCommand = 0x010E;
+        public const int ShowHistoryCommand = 0x010F;
+        public const int LoreHistoryToolbar = 0x000B;
+        public const int LoreHistoryToolbarGroup = 0x000C;
+        public const int RefreshHistoryCommand = 0x0110;
         public const int idmWSE_ContextMenu = 0x0002;
     }
 }

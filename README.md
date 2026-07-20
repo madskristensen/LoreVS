@@ -87,6 +87,38 @@ From here you can:
 - Use the toolbar to **Pull** (sync the latest remote revisions), **Push**
   committed revisions, or **Refresh** the change list.
 
+## Browse revision history
+
+Choose **Lore > View History...** to open the **Lore History** tool window - a
+read-only log of the repository bound to the open solution or folder. It works
+fully offline against a local Lore repository and never changes your working
+tree.
+
+The window loads the newest revisions first, a page at a time, so a repository
+with thousands of revisions stays responsive. Each row shows the first line of
+the commit message, the short revision hash, the author, and the local commit
+time; hover a row to see the full message, revision number, branch, and date.
+When more revisions are available, a **Load more** button appends the next page.
+
+- Select a revision to load the files it changed (relative to its direct parent).
+  File details are fetched only for the revision you select, not for the whole
+  list.
+- Double-click a changed file to diff that revision against its direct parent in
+  the native Visual Studio diff viewer. Added files open on their own, deleted
+  files show their last content from the parent, and a root revision (which has
+  no parent) opens the file as it was first committed. The diff is produced
+  read-only and never touches your working tree.
+
+The window follows the open workspace: switching solutions or folders re-resolves
+the repository automatically. When the current solution or folder is not under
+Lore source control, the window says so.
+
+The log does not reload every time the window regains focus. It refreshes on its
+own after a Lore operation performed in the extension changes history - a commit,
+a pull, or a branch switch, create, or merge - and when the open workspace
+changes. To reload it yourself at any time, click **Refresh** on the Lore History
+toolbar.
+
 ## Sign in to a server
 
 Authentication happens automatically, only when it is needed. When a clone,

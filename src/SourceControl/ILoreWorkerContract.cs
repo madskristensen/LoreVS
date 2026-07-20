@@ -155,6 +155,27 @@ namespace LoreVS.SourceControl
         /// on disk. Used to materialize the committed version of a file for diffing.
         /// </summary>
         Task<LoreCommandResult> WriteFileAtRevisionAsync(string workingDirectory, string relativePath, string revision, string outputPath, CancellationToken cancellationToken);
+
+        /// <summary>
+        /// Enumerates a bounded page of committed revisions for the repository at
+        /// <paramref name="repositoryRoot"/>, newest first, using the native Lore revision-history API.
+        /// Runs entirely offline (no server required). Pass an empty <paramref name="startAfterRevision"/>
+        /// to read from the branch tip; pass the hash of the last revision already shown to continue
+        /// paging (that revision is excluded from the returned page). At most
+        /// <paramref name="pageSize"/> revisions are returned; <see cref="LoreRevisionPage.HasMore"/>
+        /// reports whether older revisions remain. Enables the paged Lore History window without
+        /// materializing per-revision file details up front.
+        /// </summary>
+        Task<LoreRevisionPage> GetRevisionHistoryAsync(string repositoryRoot, string startAfterRevision, int pageSize, CancellationToken cancellationToken);
+
+        /// <summary>
+        /// Returns the files changed by the single revision <paramref name="revision"/> (relative to
+        /// its direct parent) for the repository at <paramref name="repositoryRoot"/>, as
+        /// absolute-path / normalized-status pairs. Read-only and offline: the working tree is never
+        /// mutated. Called lazily when a revision is selected in the Lore History window, so file
+        /// details are not loaded for every revision in advance.
+        /// </summary>
+        Task<LoreRevisionChange[]> GetRevisionChangesAsync(string repositoryRoot, string revision, CancellationToken cancellationToken);
     }
 
     /// <summary>
@@ -302,5 +323,66 @@ namespace LoreVS.SourceControl
         /// path the file was moved from. Empty for every other status.
         /// </summary>
         public string OriginalPath { get; set; } = string.Empty;
+    }
+
+    /// <summary>
+    /// A single committed revision surfaced by the Lore History window. The wire shape for
+    /// <see cref="ILoreWorkerContract.GetRevisionHistoryAsync"/>; settable members keep it trivially
+    /// serializable by System.Text.Json across the pipe. Every field is best-effort: the native SDK
+    /// omits values it cannot supply, in which case the corresponding member is left at its default.
+    /// </summary>
+    public sealed class LoreRevisionEntry
+    {
+        /// <summary>Lowercase hex hash that uniquely identifies the revision.</summary>
+        public string RevisionHash { get; set; } = string.Empty;
+
+        /// <summary>Monotonic local revision number (the tip has the highest number).</summary>
+        public long RevisionNumber { get; set; }
+
+        /// <summary>
+        /// Hex hash of the direct parent revision, or empty for a root revision with no parent.
+        /// Used to diff a changed file against the state immediately before this revision.
+        /// </summary>
+        public string ParentRevisionHash { get; set; } = string.Empty;
+
+        /// <summary>The commit message, or empty when unknown.</summary>
+        public string Message { get; set; } = string.Empty;
+
+        /// <summary>The revision author/identity (Lore's <c>created-by</c>), or empty when unknown.</summary>
+        public string Author { get; set; } = string.Empty;
+
+        /// <summary>The branch the history was read from, or empty when unknown.</summary>
+        public string BranchName { get; set; } = string.Empty;
+
+        /// <summary>Commit time as Unix milliseconds (UTC), or 0 when unknown.</summary>
+        public long TimestampUnixMs { get; set; }
+    }
+
+    /// <summary>
+    /// A bounded page of revisions plus a flag indicating whether older revisions remain. The wire
+    /// shape for <see cref="ILoreWorkerContract.GetRevisionHistoryAsync"/>; settable members keep it
+    /// trivially serializable by System.Text.Json across the pipe.
+    /// </summary>
+    public sealed class LoreRevisionPage
+    {
+        /// <summary>The revisions in this page, newest first.</summary>
+        public LoreRevisionEntry[] Entries { get; set; } = System.Array.Empty<LoreRevisionEntry>();
+
+        /// <summary>True when at least one older revision exists beyond this page (enables paging).</summary>
+        public bool HasMore { get; set; }
+    }
+
+    /// <summary>
+    /// A single file changed by one revision (relative to its direct parent). The wire shape for
+    /// <see cref="ILoreWorkerContract.GetRevisionChangesAsync"/>; settable members keep it trivially
+    /// serializable by System.Text.Json across the pipe.
+    /// </summary>
+    public sealed class LoreRevisionChange
+    {
+        /// <summary>Absolute, normalized path of the file.</summary>
+        public string Path { get; set; } = string.Empty;
+
+        /// <summary>The file's normalized change status within the revision.</summary>
+        public LoreFileStatus Status { get; set; }
     }
 }

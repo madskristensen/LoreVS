@@ -607,6 +607,7 @@ namespace LoreVS.UI
 
             await RefreshAsync();
             _sccService?.RefreshAllGlyphs();
+            _sccService?.NotifyHistoryChanged();
         }
 
         /// <summary>Pushes local commits to the remote.</summary>
@@ -645,6 +646,7 @@ namespace LoreVS.UI
 
             await RefreshAsync();
             _sccService?.RefreshAllGlyphs();
+            _sccService?.NotifyHistoryChanged();
         }
 
         /// <summary>Discards working-tree changes for the supplied files after confirmation.</summary>
@@ -747,6 +749,7 @@ namespace LoreVS.UI
 
             await RefreshAsync();
             _sccService?.RefreshAllGlyphs();
+            _sccService?.NotifyHistoryChanged();
         }
 
         /// <summary>Prompts for a name (and checkout choice), then creates a branch from the current revision.</summary>
@@ -795,6 +798,7 @@ namespace LoreVS.UI
 
             await RefreshAsync();
             _sccService?.RefreshAllGlyphs();
+            _sccService?.NotifyHistoryChanged();
         }
 
         /// <summary>Merges the supplied branch into the current branch after confirmation.</summary>
@@ -838,6 +842,7 @@ namespace LoreVS.UI
 
             await RefreshAsync();
             _sccService?.RefreshAllGlyphs();
+            _sccService?.NotifyHistoryChanged();
         }
 
         private async Task PushCoreAsync()
