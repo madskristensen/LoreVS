@@ -13,7 +13,7 @@ namespace LoreVS.Worker.Tests
     [TestClass]
     public class LoreStatusMapperTests
     {
-        [DataTestMethod]
+        [TestMethod]
         [DataRow(LoreFileAction.ADD, LoreFileStatus.Added)]
         [DataRow(LoreFileAction.DELETE, LoreFileStatus.Deleted)]
         [DataRow(LoreFileAction.MOVE, LoreFileStatus.Renamed)]
@@ -35,7 +35,7 @@ namespace LoreVS.Worker.Tests
             Assert.AreEqual(LoreFileStatus.Unchanged, LoreStatusMapper.Map(LoreFileAction.KEEP, false, false, dirty: false));
         }
 
-        [DataTestMethod]
+        [TestMethod]
         [DataRow(true, false)]
         [DataRow(false, true)]
         public void Map_AnyConflictFlag_WinsOverAction(bool conflict, bool unresolved)

@@ -58,7 +58,7 @@ namespace LoreVS.Tests
             Assert.AreEqual(@"src\File.cs", item.RelativePath);
         }
 
-        [DataTestMethod]
+        [TestMethod]
         [DataRow(LoreFileStatus.Modified, "M", "Modified")]
         [DataRow(LoreFileStatus.Added, "A", "Added")]
         [DataRow(LoreFileStatus.Deleted, "D", "Deleted")]

@@ -101,7 +101,7 @@ namespace LoreVS.Tests
         [TestMethod]
         public void Constructor_NullEntryThrows()
         {
-            Assert.ThrowsException<ArgumentNullException>(() => new LoreRevisionItem(null!));
+            Assert.ThrowsExactly<ArgumentNullException>(() => new LoreRevisionItem(null!));
         }
 
         [TestMethod]

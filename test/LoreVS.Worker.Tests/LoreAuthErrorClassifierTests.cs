@@ -11,7 +11,7 @@ namespace LoreVS.Worker.Tests
     [TestClass]
     public class LoreAuthErrorClassifierTests
     {
-        [DataTestMethod]
+        [TestMethod]
         [DataRow("Request failed: 401 Unauthorized")]
         [DataRow("permission denied for repository")]
         [DataRow("error: forbidden (403)")]
@@ -23,7 +23,7 @@ namespace LoreVS.Worker.Tests
             Assert.IsTrue(LoreServiceImpl.IsAuthError(message));
         }
 
-        [DataTestMethod]
+        [TestMethod]
         [DataRow("")]
         [DataRow(null)]
         [DataRow("connection refused")]

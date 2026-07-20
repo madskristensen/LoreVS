@@ -14,7 +14,7 @@ namespace LoreVS.Worker.Tests
     [TestClass]
     public class LoreRevisionMapperTests
     {
-        [DataTestMethod]
+        [TestMethod]
         [DataRow(LoreFileAction.ADD, LoreFileStatus.Added)]
         [DataRow(LoreFileAction.DELETE, LoreFileStatus.Deleted)]
         [DataRow(LoreFileAction.MOVE, LoreFileStatus.Renamed)]
