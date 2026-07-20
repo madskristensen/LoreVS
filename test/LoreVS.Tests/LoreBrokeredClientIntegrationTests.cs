@@ -76,6 +76,7 @@ namespace LoreVS.Tests
         }
 
         [TestMethod]
+        [DoNotParallelize]
         public void GetRepositorySnapshot_ReturnsFilesAndBranchInOnePass()
         {
             string worker = RequireWorker();
@@ -104,6 +105,7 @@ namespace LoreVS.Tests
         }
 
         [TestMethod]
+        [DoNotParallelize]
         public void ConcurrentStatusCalls_DoNotCrashWorker()
         {
             string worker = RequireWorker();
