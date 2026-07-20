@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -35,10 +36,10 @@ namespace LoreVS.Worker
         // while still bounding a flow the user abandoned without cancelling.
         private const int LoginTimeoutMs = 300000;
 
-        // Each native SDK call drives its own tokio runtime synchronously, so it must run on a
-        // dedicated worker thread and block there with Wait(). Calls are NOT funneled through a
-        // shared gate: a single slow/stuck native operation must never be able to stall unrelated
-        // operations such as the file status scans that drive Solution Explorer glyphs.
+        // Lore's native runtime is process-global and cannot safely execute multiple SDK operations
+        // concurrently. Serialize calls before starting their dedicated worker threads.
+        private static readonly SemaphoreSlim _sdkGate = new SemaphoreSlim(1, 1);
+
         /// <summary>
         /// Runs a blocking native SDK action on a dedicated worker thread, logging its lifecycle and
         /// enforcing <see cref="SdkTimeoutMs"/> so a stuck native call surfaces as a
@@ -56,27 +57,35 @@ namespace LoreVS.Worker
         /// </summary>
         private static async Task RunExclusiveAsync(Action action, int timeoutMs, [CallerMemberName] string operation = "")
         {
-            WorkerLog.Write(operation + ": start");
-            var sw = Stopwatch.StartNew();
-
-            Task work = Task.Run(action);
-            Task finished = await Task.WhenAny(work, Task.Delay(timeoutMs)).ConfigureAwait(false);
-            if (finished != work)
-            {
-                WorkerLog.Write($"{operation}: TIMEOUT after {sw.ElapsedMilliseconds} ms");
-                throw new TimeoutException(
-                    $"The Lore SDK operation '{operation}' did not complete within {timeoutMs} ms.");
-            }
-
+            await _sdkGate.WaitAsync().ConfigureAwait(false);
             try
             {
-                await work.ConfigureAwait(false);
-                WorkerLog.Write($"{operation}: ok in {sw.ElapsedMilliseconds} ms");
+                WorkerLog.Write(operation + ": start");
+                var sw = Stopwatch.StartNew();
+
+                Task work = Task.Run(action);
+                Task finished = await Task.WhenAny(work, Task.Delay(timeoutMs)).ConfigureAwait(false);
+                if (finished != work)
+                {
+                    WorkerLog.Write($"{operation}: TIMEOUT after {sw.ElapsedMilliseconds} ms");
+                    throw new TimeoutException(
+                        $"The Lore SDK operation '{operation}' did not complete within {timeoutMs} ms.");
+                }
+
+                try
+                {
+                    await work.ConfigureAwait(false);
+                    WorkerLog.Write($"{operation}: ok in {sw.ElapsedMilliseconds} ms");
+                }
+                catch (Exception ex)
+                {
+                    WorkerLog.Write($"{operation}: FAILED in {sw.ElapsedMilliseconds} ms: {ex.GetType().Name}: {ex.Message}");
+                    throw;
+                }
             }
-            catch (Exception ex)
+            finally
             {
-                WorkerLog.Write($"{operation}: FAILED in {sw.ElapsedMilliseconds} ms: {ex.GetType().Name}: {ex.Message}");
-                throw;
+                _sdkGate.Release();
             }
         }
 
@@ -187,7 +196,7 @@ namespace LoreVS.Worker
                 return Array.Empty<LoreStatusEntry>();
             }
 
-            var entries = new List<LoreStatusEntry>();
+            var entries = new ConcurrentQueue<LoreStatusEntry>();
 
             // The native SDK drives its own runtime synchronously; run it on a worker thread under
             // the SDK gate and block there with Wait() so we never start a tokio runtime from within
@@ -216,7 +225,7 @@ namespace LoreVS.Worker
                         }
 
                         LoreRepositoryStatusFileEventDataFFI file = loreEvent.GetData<LoreRepositoryStatusFileEventDataFFI>();
-                        entries.Add(new LoreStatusEntry
+                        entries.Enqueue(new LoreStatusEntry
                         {
                             Path = NormalizePath(repositoryRoot, file.Path),
                             Status = LoreStatusMapper.Map(file),
@@ -242,7 +251,7 @@ namespace LoreVS.Worker
                 return snapshot;
             }
 
-            var entries = new List<LoreStatusEntry>();
+            var entries = new ConcurrentQueue<LoreStatusEntry>();
             var info = new LoreRepositoryInfo();
             var sawRevision = false;
 
@@ -276,7 +285,7 @@ namespace LoreVS.Worker
                             // tree, so skip anything that resolves to an existing directory.
                             if (!Directory.Exists(normalized))
                             {
-                                entries.Add(new LoreStatusEntry
+                                entries.Enqueue(new LoreStatusEntry
                                 {
                                     Path = normalized,
                                     Status = LoreStatusMapper.Map(file),
