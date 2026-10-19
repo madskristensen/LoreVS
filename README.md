@@ -122,6 +122,44 @@ server session, not the commit-author identity setting. The extension does not
 request force release or supply an alternate owner; server permissions still
 govern whether a lock can be released. Locks are scoped to a branch.
 
+## Manage branches
+
+Choose **Lore > Manage Branches...** on the solution or folder, use the branch
+management button on the Lore Changes toolbar, or open **View > Other Windows >
+Manage Branches...**. The **Lore Branches** window provides:
+
+- Branch information: identity, category, creator, creation timestamp, parent,
+  branch point, ancestor stack, archived state, and separate local and remote
+  revision tips.
+- **Compare branches**: select explicit source (left) and target (right) branches
+  to compare their committed snapshots. Double-click a file, press Enter, or use
+  **Open selected file diff** for the native Visual Studio diff viewer. Renames
+  preserve the original path, and added/deleted files use an empty side. The
+  native three-way merge preview's base and potential conflict paths are shown
+  separately from snapshot differences. Remote tips and uncached content may
+  require a server connection. No merge or checkout is performed.
+- **Protect...** and **Unprotect...**: confirmed native Lore protection changes.
+  Server permissions apply when a remote is configured; otherwise the change
+  affects local metadata. Lore's branch-info API does not expose protection state,
+  so the window offers both explicit operations rather than guessing a toggle.
+- **Archive...**: confirmed archive locally and on the configured remote. The
+  current, default, and protected branches cannot be archived. No forced removal
+  or layer/link cascade is requested. The native operation is not transactional:
+  a remote failure can leave a partial archive, which is reported as a failure.
+  Refresh branch information before retrying.
+- **Reset branch to revision...**: enter a committed revision on the selected
+  branch (or its branch point), then confirm the target and previous tip. Reset
+  is local only and never pushes or rewrites the server branch. Resetting the
+  current branch also updates its working files; resetting another branch leaves
+  the current files alone. Save or close unsaved documents first, and commit or
+  discard all working/staged changes and finish or abort any merge. If the tip
+  changed since it was displayed, refresh and confirm again. The previous tip is
+  recorded in the Lore Output window for recovery.
+
+Use **Refresh branches** after changes made outside this window. Server operations
+use the existing sign-in flow and surface errors rather than reporting empty or
+successful results when the backend fails.
+
 ## Browse revision history
 
 Choose **Lore > View History...** to open the **Lore History** tool window - a
@@ -200,6 +238,7 @@ store is an LRU cache, so content can be evicted; if a switch or merge needs
 content that is no longer cached, it is fetched from the Lore server. When that
 content is missing and the server is unreachable, the operation reports a clear
 message asking you to start (or reconnect to) your Lore server and try again.
+Remote-only branches also retry online when their names are not yet cached.
 
 ## Settings
 
@@ -226,6 +265,11 @@ copies, repeated acquisition, multiple files, rejected requests, and lock-query
 failure when the server is stopped. The unauthenticated local server uses a
 shared anonymous lock owner, so cross-user contention and unauthorized release
 require an authenticated server and are not claimed by these tests.
+Branch tests cover uncached remote comparisons, branch metadata, remote-only
+switch/merge, protection and rejected archive from a second working copy,
+unprotect/archive and fresh-clone verification, and a local reset that preserves
+the remote tip. They also verify that an unavailable server cannot report a
+successful protection change.
 
 Build the solution first. Download and extract the Windows x64
 [Lore server 0.10.1 release](https://github.com/EpicGames/lore/releases/tag/v0.10.1),

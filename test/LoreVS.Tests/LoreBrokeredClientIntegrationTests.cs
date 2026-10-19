@@ -504,6 +504,11 @@ namespace LoreVS.Tests
             StringAssert.Contains(conflicted, "<<<<<<<");
             StringAssert.Contains(conflicted, ">>>>>>>");
 
+            string mergeTip = client.GetBranchInfo(repoPath, original).LatestRevision;
+            LoreCommandResult branchReset = client.ResetBranch(repoPath, original, mergeTip, mergeTip);
+            Assert.IsFalse(branchReset.Success, "Branch reset must preserve an in-progress merge.");
+            Assert.AreEqual(conflicted, File.ReadAllText(shared));
+
             LoreCommandResult partialCommit = client.CommitFiles(
                 repoPath, new[] { shared }, "Must not discard merge state", "test@lorevs", amend: false);
             Assert.IsFalse(partialCommit.Success, "Partial commits must not reset an in-progress merge.");

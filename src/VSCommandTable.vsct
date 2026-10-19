@@ -96,6 +96,13 @@
     <!--This section defines the elements the user can interact with, like a menu command or a button
         or combo box in a toolbar. -->
     <Buttons>
+      <Button guid="LoreVS" id="ShowBranchesCommand" priority="0x0125" type="Button">
+        <Parent guid="LoreVS" id="MyMenuGroup"/>
+        <Icon guid="ImageCatalogGuid" id="Branch"/>
+        <CommandFlag>IconIsMoniker</CommandFlag>
+        <CommandFlag>DynamicVisibility</CommandFlag>
+        <Strings><ButtonText>Manage Branches...</ButtonText><LocCanonicalName>.LoreVS.ManageBranches</LocCanonicalName></Strings>
+      </Button>
       <Button guid="LoreVS" id="LockCommand" priority="0x0130" type="Button">
         <Parent guid="LoreVS" id="LoreFileGroup"/>
         <Icon guid="ImageCatalogGuid" id="Lock"/>
@@ -272,8 +279,15 @@
     <VisibilityItem guid="LoreVS" id="UndoChangesCommand" context="guidLoreUiContext" />
     <VisibilityItem guid="LoreVS" id="CompareUnmodifiedCommand" context="guidLoreUiContext" />
     <VisibilityItem guid="LoreVS" id="ShowHistoryCommand" context="guidLoreUiContext" />
+    <VisibilityItem guid="LoreVS" id="ShowBranchesCommand" context="guidLoreUiContext" />
   </VisibilityConstraints>
   <CommandPlacements>
+    <CommandPlacement guid="LoreVS" id="ShowBranchesCommand" priority="0x0200">
+      <Parent guid="LoreVS" id="LoreChangesBranchGroup"/>
+    </CommandPlacement>
+    <CommandPlacement guid="LoreVS" id="ShowBranchesCommand" priority="0x0900">
+      <Parent guid="guidSHLMainMenu" id="IDG_VS_WNDO_OTRWNDWS1"/>
+    </CommandPlacement>
     <CommandPlacement guid="LoreVS" id="LockCommand" priority="0x0100">
       <Parent guid="LoreVS" id="LoreChangesLockActionsGroup"/>
     </CommandPlacement>
@@ -326,6 +340,7 @@
       <IDSymbol name="OpenChangeDiffCommand" value="0x0113" />
       <IDSymbol name="OpenChangeFileCommand" value="0x0114" />
       <IDSymbol name="DiscardChangeCommand" value="0x0115" />
+      <IDSymbol name="ShowBranchesCommand" value="0x0116" />
       <IDSymbol name="LoreChangesContextMenu" value="0x2000" />
       <IDSymbol name="LoreChangesFileActionsGroup" value="0x2001" />
       <IDSymbol name="LoreChangesDiscardGroup" value="0x2002" />

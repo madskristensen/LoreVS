@@ -591,6 +591,7 @@ namespace LoreVS.Worker
                         LoreBranchListEntryEventDataFFI entry = loreEvent.GetData<LoreBranchListEntryEventDataFFI>();
                         entries.Add(new LoreBranchEntry
                         {
+                            Id = LoreRevisionMapper.ToHex(entry.Id.Data),
                             Name = entry.Name ?? string.Empty,
                             Category = entry.Category ?? string.Empty,
                             IsCurrent = entry.IsCurrent,
@@ -716,16 +717,16 @@ namespace LoreVS.Worker
 
             // Lore's local store is a fragment cache (see Lore system-design 12.6): switching to a
             // branch whose content is still cached needs no network, but the LRU cache can evict the
-            // target's fragments, in which case the switch must re-fetch them from the remote. Try
-            // offline first for the fast/disconnected path; only reach for the network when the local
-            // content is genuinely missing.
+            // target's fragments, in which case the switch must re-fetch them from the remote. A
+            // remote-only branch may also need a name lookup. Try offline first and retry online
+            // only when the branch data or content is missing.
             LoreCommandResult offline = await TrySwitchBranchAsync(workingDirectory, branchName, offline: true).ConfigureAwait(false);
-            if (offline.Success || !RequiresRemoteContent(offline.Error))
+            if (offline.Success || !RequiresRemoteBranchData(offline.Error))
             {
                 return offline;
             }
 
-            WorkerLog.Write("SwitchBranchAsync: target content not cached locally; retrying online");
+            WorkerLog.Write("SwitchBranchAsync: target branch data not cached locally; retrying online");
             LoreCommandResult online = await TrySwitchBranchAsync(workingDirectory, branchName, offline: false).ConfigureAwait(false);
             if (online.Success)
             {
@@ -737,7 +738,7 @@ namespace LoreVS.Worker
             // with an actionable message.
             return IsRemoteUnreachable(online.Error)
                 ? LoreCommandResult.Failed(
-                    "Switching to '" + branchName + "' needs file content that isn't cached locally, and the " +
+                    "Switching to '" + branchName + "' needs branch data that isn't cached locally, and the " +
                     "Lore server could not be reached to fetch it.\r\n\r\nStart (or reconnect to) your Lore " +
                     "server and try again.\r\n\r\nDetails: " + online.Error)
                 : online;
@@ -798,13 +799,13 @@ namespace LoreVS.Worker
         }
 
         /// <summary>
-        /// True when a Lore error indicates the operation needs content that is not materialized in the
-        /// local fragment cache and must be fetched from the remote (so an online retry can help).
+        /// True when the operation needs uncached content or an uncached remote branch-name lookup.
         /// </summary>
-        private static bool RequiresRemoteContent(string error)
+        internal static bool RequiresRemoteBranchData(string error)
         {
             return !string.IsNullOrEmpty(error) &&
                    (error.IndexOf("Address not found", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    error.IndexOf("remote unavailable for branch lookup", StringComparison.OrdinalIgnoreCase) >= 0 ||
                     error.IndexOf("synchronize state", StringComparison.OrdinalIgnoreCase) >= 0);
         }
 
@@ -844,11 +845,9 @@ namespace LoreVS.Worker
                 return new LoreMergeResult { Success = false, ErrorMessage = "A branch name is required." };
             }
 
-            // Like switching, a merge must materialize the source branch's content. Try offline first
-            // (no network when the content is cached); only retry online when Lore reports the content
-            // is missing from the local cache.
+            // Like switching, a merge may need uncached source content or a remote branch-name lookup.
             LoreMergeResult offline = await TryMergeBranchAsync(workingDirectory, sourceBranch, identity, offline: true).ConfigureAwait(false);
-            if (offline.Success || offline.HasConflicts || !RequiresRemoteContent(offline.ErrorMessage))
+            if (offline.Success || offline.HasConflicts || !RequiresRemoteBranchData(offline.ErrorMessage))
             {
                 return offline;
             }
@@ -1444,6 +1443,11 @@ namespace LoreVS.Worker
         internal static LoreCommandResult MapFailure(Exception exception)
         {
             Exception error = Unwrap(exception);
+            if (error is BranchOperationException branchError)
+            {
+                return branchError.Result;
+            }
+
             if (error is LoreError loreError)
             {
                 const int notAuthenticated = 12;

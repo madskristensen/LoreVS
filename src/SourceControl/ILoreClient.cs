@@ -68,6 +68,21 @@ namespace LoreVS.SourceControl
         /// </summary>
         LoreBranchEntry[] ListBranches(string repositoryRoot);
 
+        /// <summary>Reads branch metadata and local/remote tips without switching branches.</summary>
+        LoreBranchInfo GetBranchInfo(string repositoryRoot, string branch);
+
+        /// <summary>Compares branch snapshots and reports potential three-way merge conflicts.</summary>
+        LoreBranchComparison CompareBranches(string repositoryRoot, string sourceBranch, string targetBranch);
+
+        /// <summary>Archives a branch locally and on its remote, without force or cascading.</summary>
+        LoreCommandResult ArchiveBranch(string repositoryRoot, string branch);
+
+        /// <summary>Resets a clean local branch after verifying its previously confirmed tip.</summary>
+        LoreCommandResult ResetBranch(string repositoryRoot, string branch, string revision, string expectedTip);
+
+        /// <summary>Sets branch protection using native Lore and server permissions.</summary>
+        LoreCommandResult SetBranchProtection(string repositoryRoot, string branch, bool protect);
+
         /// <summary>
         /// Creates a branch named <paramref name="branchName"/> from the current revision. When
         /// <paramref name="checkout"/> is <see langword="true"/> the working tree is switched to the

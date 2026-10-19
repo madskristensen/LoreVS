@@ -1,0 +1,53 @@
+<UserControl x:Class="LoreVS.UI.LoreBranchesControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:toolkit="clr-namespace:Community.VisualStudio.Toolkit;assembly=Community.VisualStudio.Toolkit"
+             toolkit:Themes.UseVsTheme="True">
+    <DockPanel Margin="8">
+        <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusText}" TextWrapping="Wrap" Margin="0,8,0,0" />
+        <Button DockPanel.Dock="Top" Content="Refresh branches" Click="OnRefreshClick"
+                IsEnabled="{Binding CanRefresh}" HorizontalAlignment="Left" Padding="8,2" Margin="0,0,0,8" />
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel IsEnabled="{Binding CanInteract}">
+                <TextBlock Text="Branch information and actions" FontWeight="Bold" />
+                <ComboBox ItemsSource="{Binding Branches}" SelectedItem="{Binding SelectedBranch}"
+                          DisplayMemberPath="DisplayName" SelectionChanged="OnBranchChanged" Margin="0,6,0,6"
+                          AutomationProperties.Name="Branch to inspect or manage" />
+                <TextBox Text="{Binding InfoText, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap"
+                         MaxHeight="200" VerticalScrollBarVisibility="Auto" AutomationProperties.Name="Branch information" />
+                <WrapPanel Margin="0,6,0,6">
+                    <Button Content="Protect..." Click="OnProtectClick" Padding="8,2" Margin="0,0,6,0" />
+                    <Button Content="Unprotect..." Click="OnUnprotectClick" Padding="8,2" Margin="0,0,6,0" />
+                    <Button Content="Archive..." Click="OnArchiveClick" Padding="8,2" />
+                </WrapPanel>
+                <TextBlock Text="Reset is local only. It requires a clean working tree and never pushes." TextWrapping="Wrap" />
+                <TextBox x:Name="ResetRevision" Margin="0,6,0,6" AutomationProperties.Name="Reset target revision"
+                         ToolTip="Enter a committed revision on the selected branch, or its branch point." />
+                <Button Content="Reset branch to revision..." Click="OnResetClick" Padding="8,2" HorizontalAlignment="Left" />
+                <Separator Margin="0,12,0,12" />
+                <TextBlock Text="Compare branch snapshots and preview merge conflicts" TextWrapping="Wrap" FontWeight="Bold" />
+                <TextBlock Text="Source (left)" Margin="0,6,0,2" />
+                <ComboBox ItemsSource="{Binding Branches}" SelectedItem="{Binding SourceBranch}" DisplayMemberPath="DisplayName"
+                          AutomationProperties.Name="Comparison source branch" />
+                <TextBlock Text="Target (right)" Margin="0,6,0,2" />
+                <ComboBox ItemsSource="{Binding Branches}" SelectedItem="{Binding TargetBranch}" DisplayMemberPath="DisplayName"
+                          AutomationProperties.Name="Comparison target branch" />
+                <Button Content="Compare branches" Click="OnCompareClick" HorizontalAlignment="Left" Padding="8,2" Margin="0,6,0,6" />
+                <TextBlock Text="{Binding ComparisonText}" TextWrapping="Wrap" Margin="0,0,0,6" />
+                <ListBox x:Name="Files" ItemsSource="{Binding Changes}" MinHeight="100" MaxHeight="350"
+                         MouseDoubleClick="OnFileDoubleClick" KeyDown="OnFileKeyDown"
+                         AutomationProperties.Name="Branch snapshot differences">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal" ToolTip="{Binding StatusText}">
+                                <TextBlock Text="{Binding StatusBadge}" Width="20" />
+                                <TextBlock Text="{Binding RelativePath}" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+                <Button Content="Open selected file diff" Click="OnOpenDiffClick" HorizontalAlignment="Left" Padding="8,2" Margin="0,6,0,0" />
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
+</UserControl>

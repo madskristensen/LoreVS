@@ -318,6 +318,53 @@ namespace LoreVS.SourceControl
             return Invoke((proxy, ct) => proxy.CreateBranchAsync(workingDirectory, branchName, identity, checkout, ct));
         }
 
+        public LoreBranchInfo GetBranchInfo(string repositoryRoot, string branch) =>
+            InvokeBranchQuery((proxy, ct) => proxy.GetBranchInfoAsync(repositoryRoot, branch, ct),
+                error => new LoreBranchInfo { Result = error });
+
+        public LoreBranchComparison CompareBranches(string repositoryRoot, string sourceBranch, string targetBranch) =>
+            InvokeBranchQuery((proxy, ct) => proxy.CompareBranchesAsync(repositoryRoot, sourceBranch, targetBranch, ct),
+                error => new LoreBranchComparison { Result = error });
+
+        public LoreCommandResult ArchiveBranch(string repositoryRoot, string branch)
+        {
+            InvalidateCache();
+            return Invoke((proxy, ct) => proxy.ArchiveBranchAsync(repositoryRoot, branch, ct));
+        }
+
+        public LoreCommandResult ResetBranch(string repositoryRoot, string branch, string revision, string expectedTip)
+        {
+            InvalidateCache();
+            return Invoke((proxy, ct) => proxy.ResetBranchAsync(repositoryRoot, branch, revision, expectedTip, ct));
+        }
+
+        public LoreCommandResult SetBranchProtection(string repositoryRoot, string branch, bool protect)
+        {
+            InvalidateCache();
+            return Invoke((proxy, ct) => proxy.SetBranchProtectionAsync(repositoryRoot, branch, protect, ct));
+        }
+
+        private T InvokeBranchQuery<T>(Func<ILoreWorkerContract, CancellationToken, Task<T>> operation,
+            Func<LoreCommandResult, T> failure) where T : class
+        {
+            ILoreWorkerContract? proxy = GetProxy();
+            if (proxy == null)
+            {
+                return failure(WorkerUnavailable());
+            }
+
+            try
+            {
+                return Run(ct => operation(proxy, ct)) ?? failure(LoreCommandResult.Failed("Lore returned no branch result."));
+            }
+            catch (Exception ex)
+            {
+                _ = ex.LogAsync();
+                HandleCallFailure(ex);
+                return failure(LoreCommandResult.Failed(ex.Message));
+            }
+        }
+
         /// <inheritdoc/>
         public LoreCommandResult SwitchBranch(string workingDirectory, string branchName)
         {

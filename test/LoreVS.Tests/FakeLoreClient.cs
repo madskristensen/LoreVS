@@ -48,6 +48,12 @@ namespace LoreVS.Tests
 
         public LoreBranchEntry[] ListBranches(string repositoryRoot) => throw new NotImplementedException();
 
+        public LoreBranchInfo GetBranchInfo(string repositoryRoot, string branch) => throw new NotImplementedException();
+        public LoreBranchComparison CompareBranches(string repositoryRoot, string sourceBranch, string targetBranch) => throw new NotImplementedException();
+        public LoreCommandResult ArchiveBranch(string repositoryRoot, string branch) => throw new NotImplementedException();
+        public LoreCommandResult ResetBranch(string repositoryRoot, string branch, string revision, string expectedTip) => throw new NotImplementedException();
+        public LoreCommandResult SetBranchProtection(string repositoryRoot, string branch, bool protect) => throw new NotImplementedException();
+
         public LoreCommandResult CreateBranch(string workingDirectory, string branchName, string identity, bool checkout) => throw new NotImplementedException();
 
         public LoreCommandResult SwitchBranch(string workingDirectory, string branchName) => throw new NotImplementedException();

@@ -45,6 +45,7 @@ namespace LoreVS
     // and push/pull. Docked next to Solution Explorer by default.
     [ProvideToolWindow(typeof(UI.LoreChangesToolWindow.Pane), Style = VsDockStyle.Tabbed, Window = WindowGuids.SolutionExplorer)]
     [ProvideToolWindow(typeof(UI.LoreHistoryToolWindow.Pane), Style = VsDockStyle.Tabbed, Window = WindowGuids.SolutionExplorer)]
+    [ProvideToolWindow(typeof(UI.LoreBranchesToolWindow.Pane), Style = VsDockStyle.Tabbed, Window = WindowGuids.SolutionExplorer)]
     [ProvideBindingPath()]
     [Guid(PackageGuids.LoreVSString)]
     public sealed partial class LoreVSPackage : ToolkitPackage

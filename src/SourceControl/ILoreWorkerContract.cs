@@ -100,6 +100,12 @@ namespace LoreVS.SourceControl
         /// </summary>
         Task<LoreBranchEntry[]> ListBranchesAsync(string repositoryRoot, CancellationToken cancellationToken);
 
+        Task<LoreBranchInfo> GetBranchInfoAsync(string repositoryRoot, string branch, CancellationToken cancellationToken);
+        Task<LoreBranchComparison> CompareBranchesAsync(string repositoryRoot, string sourceBranch, string targetBranch, CancellationToken cancellationToken);
+        Task<LoreCommandResult> ArchiveBranchAsync(string repositoryRoot, string branch, CancellationToken cancellationToken);
+        Task<LoreCommandResult> ResetBranchAsync(string repositoryRoot, string branch, string revision, string expectedTip, CancellationToken cancellationToken);
+        Task<LoreCommandResult> SetBranchProtectionAsync(string repositoryRoot, string branch, bool protect, CancellationToken cancellationToken);
+
         /// <summary>
         /// Creates a branch named <paramref name="branchName"/> from the current revision. When
         /// <paramref name="checkout"/> is <see langword="true"/> the working tree is switched to the
@@ -248,6 +254,9 @@ namespace LoreVS.SourceControl
     /// </summary>
     public sealed class LoreBranchEntry
     {
+        /// <summary>Stable native branch identity.</summary>
+        public string Id { get; set; } = string.Empty;
+
         /// <summary>The branch name (e.g. <c>main</c>).</summary>
         public string Name { get; set; } = string.Empty;
 
@@ -262,6 +271,42 @@ namespace LoreVS.SourceControl
 
         /// <summary>True when the branch has been archived.</summary>
         public bool Archived { get; set; }
+
+        public string DisplayName => Name + (IsRemote ? " (remote)" : IsCurrent ? " (current)" : string.Empty);
+    }
+
+    /// <summary>Branch information with an explicit failure when no metadata was returned.</summary>
+    public sealed class LoreBranchInfo
+    {
+        public LoreCommandResult Result { get; set; } = LoreCommandResult.Failed("Branch information was not loaded.");
+        public string Id { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+        public string Category { get; set; } = string.Empty;
+        public string LatestRevision { get; set; } = string.Empty;
+        public string RemoteRevision { get; set; } = string.Empty;
+        public string ParentBranchId { get; set; } = string.Empty;
+        public string BranchPoint { get; set; } = string.Empty;
+        public LoreBranchAncestor[] Stack { get; set; } = System.Array.Empty<LoreBranchAncestor>();
+        public string Creator { get; set; } = string.Empty;
+        public ulong Created { get; set; }
+        public bool Archived { get; set; }
+    }
+
+    public sealed class LoreBranchAncestor
+    {
+        public string BranchId { get; set; } = string.Empty;
+        public string Revision { get; set; } = string.Empty;
+    }
+
+    /// <summary>Snapshot differences plus the native merge preview's base and conflict paths.</summary>
+    public sealed class LoreBranchComparison
+    {
+        public LoreCommandResult Result { get; set; } = LoreCommandResult.Failed("Branches were not compared.");
+        public string SourceRevision { get; set; } = string.Empty;
+        public string TargetRevision { get; set; } = string.Empty;
+        public string BaseRevision { get; set; } = string.Empty;
+        public LoreRevisionChange[] Changes { get; set; } = System.Array.Empty<LoreRevisionChange>();
+        public string[] ConflictPaths { get; set; } = System.Array.Empty<string>();
     }
 
     /// <summary>

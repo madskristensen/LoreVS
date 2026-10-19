@@ -53,6 +53,7 @@ namespace LoreVS
         public const int OpenChangeDiffCommand = 0x0113;
         public const int OpenChangeFileCommand = 0x0114;
         public const int DiscardChangeCommand = 0x0115;
+        public const int ShowBranchesCommand = 0x0116;
         public const int LoreChangesContextMenu = 0x2000;
         public const int LoreChangesFileActionsGroup = 0x2001;
         public const int LoreChangesDiscardGroup = 0x2002;
