@@ -1,5 +1,6 @@
 using System;
 using System.ComponentModel;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using Community.VisualStudio.Toolkit;
@@ -88,6 +89,12 @@ namespace LoreVS.UI
 
         private void OnLoadMoreClick(object sender, RoutedEventArgs e) => Run(ViewModel.LoadMoreAsync);
 
+        private void OnRevisionSelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+        {
+            ViewModel.ApplySelection(RevisionsList.SelectedItems.Cast<LoreRevisionItem>());
+            Run(ViewModel.LoadSelectedChangesAsync);
+        }
+
         private void OnFileDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
         {
             if (FilesList.SelectedItem is not LoreChangeItem item)
@@ -103,7 +110,10 @@ namespace LoreVS.UI
                 return;
             }
 
-            Run(() => LoreHistoryDiffPresenter.ShowAsync(client, root!, item, revision.RevisionHash, revision.ParentRevisionHash));
+            string source = ViewModel.ComparisonBaseRevisionHash;
+            Run(() => string.IsNullOrEmpty(source)
+                ? LoreHistoryDiffPresenter.ShowAsync(client, root!, item, revision.RevisionHash, revision.ParentRevisionHash)
+                : LoreHistoryDiffPresenter.ShowComparisonAsync(client, root!, item, source, revision.RevisionHash));
         }
 
         // Runs a view-model task on the UI thread's joinable task factory. FileAndForget logs any

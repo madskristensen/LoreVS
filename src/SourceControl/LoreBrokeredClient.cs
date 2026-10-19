@@ -582,6 +582,26 @@ namespace LoreVS.SourceControl
             }
         }
 
+        /// <inheritdoc/>
+        public LoreRevisionComparison CompareRevisions(string repositoryRoot, string sourceRevision, string targetRevision)
+        {
+            ILoreWorkerContract? proxy = GetProxy();
+            if (proxy == null)
+            {
+                return new LoreRevisionComparison { Result = LoreCommandResult.Failed("The Lore worker is unavailable.") };
+            }
+
+            try
+            {
+                return Run(ct => proxy.CompareRevisionsAsync(repositoryRoot, sourceRevision, targetRevision, ct));
+            }
+            catch (Exception ex)
+            {
+                HandleCallFailure(ex);
+                return new LoreRevisionComparison { Result = LoreCommandResult.Failed(ex.Message) };
+            }
+        }
+
         /// <summary>Clears any cached status so the next query re-runs against the worker.</summary>
         public void InvalidateCache() => _cache.Clear();
 

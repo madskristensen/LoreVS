@@ -17,6 +17,10 @@ namespace LoreVS.Tests
 
         public Func<string, string, LoreRevisionChange[]>? GetRevisionChangesHandler { get; set; }
 
+        public Func<string, string, string, LoreRevisionComparison>? CompareRevisionsHandler { get; set; }
+
+        public Func<string, string, string, string, LoreCommandResult>? WriteFileAtRevisionHandler { get; set; }
+
         public bool IsAvailable => true;
 
         public string? FindRepositoryRoot(string path) =>
@@ -74,6 +78,10 @@ namespace LoreVS.Tests
 
         public LoreCommandResult ResetFiles(string workingDirectory, string[] paths) => throw new NotImplementedException();
 
-        public LoreCommandResult WriteFileAtRevision(string workingDirectory, string relativePath, string revision, string outputPath) => throw new NotImplementedException();
+        public LoreCommandResult WriteFileAtRevision(string workingDirectory, string relativePath, string revision, string outputPath) =>
+            WriteFileAtRevisionHandler != null ? WriteFileAtRevisionHandler(workingDirectory, relativePath, revision, outputPath) : throw new NotImplementedException();
+
+        public LoreRevisionComparison CompareRevisions(string repositoryRoot, string sourceRevision, string targetRevision) =>
+            CompareRevisionsHandler != null ? CompareRevisionsHandler(repositoryRoot, sourceRevision, targetRevision) : throw new NotImplementedException();
     }
 }

@@ -176,6 +176,9 @@ namespace LoreVS.SourceControl
         /// details are not loaded for every revision in advance.
         /// </summary>
         Task<LoreRevisionChange[]> GetRevisionChangesAsync(string repositoryRoot, string revision, CancellationToken cancellationToken);
+
+        /// <summary>Returns file differences from source to target, fetching uncached data as needed.</summary>
+        Task<LoreRevisionComparison> CompareRevisionsAsync(string repositoryRoot, string sourceRevision, string targetRevision, CancellationToken cancellationToken);
     }
 
     /// <summary>
@@ -384,5 +387,16 @@ namespace LoreVS.SourceControl
 
         /// <summary>The file's normalized change status within the revision.</summary>
         public LoreFileStatus Status { get; set; }
+
+        /// <summary>The source path of a moved file, empty for other changes.</summary>
+        public string OriginalPath { get; set; } = string.Empty;
+    }
+
+    /// <summary>A revision comparison, including explicit native or transport failures.</summary>
+    public sealed class LoreRevisionComparison
+    {
+        public LoreCommandResult Result { get; set; } = LoreCommandResult.Failed("The revision comparison did not complete.");
+
+        public LoreRevisionChange[] Changes { get; set; } = System.Array.Empty<LoreRevisionChange>();
     }
 }

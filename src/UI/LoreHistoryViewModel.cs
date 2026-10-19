@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Community.VisualStudio.Toolkit;
@@ -41,6 +42,8 @@ namespace LoreVS.UI
         private bool _canLoadMore;
         private string _statusText = string.Empty;
         private LoreRevisionItem? _selectedRevision;
+        private string _comparisonBaseRevisionHash = string.Empty;
+        private string _changesTitle = "Changed files";
 
         // The revision whose changes are currently being (or have been) loaded. Used to discard the
         // result of a superseded load when the user quickly selects another revision.
@@ -118,13 +121,34 @@ namespace LoreVS.UI
         public LoreRevisionItem? SelectedRevision
         {
             get => _selectedRevision;
-            set
-            {
-                if (SetProperty(ref _selectedRevision, value))
-                {
-                    OnRevisionSelected(value);
-                }
-            }
+            private set => SetProperty(ref _selectedRevision, value);
+        }
+
+        public string ComparisonBaseRevisionHash
+        {
+            get => _comparisonBaseRevisionHash;
+            private set => SetProperty(ref _comparisonBaseRevisionHash, value);
+        }
+
+        public string ChangesTitle
+        {
+            get => _changesTitle;
+            private set => SetProperty(ref _changesTitle, value);
+        }
+
+        internal string SelectionRequestKey => _pendingChangesRevision;
+
+        /// <summary>Orders a comparison by the displayed history, not by click order.</summary>
+        public void ApplySelection(IEnumerable<LoreRevisionItem> selection)
+        {
+            LoreRevisionItem[] selected = selection.Where(Revisions.Contains).Distinct()
+                .OrderBy(item => Revisions.IndexOf(item)).ToArray();
+            SelectedRevision = selected.Length == 1 || selected.Length == 2 ? selected[0] : null;
+            ComparisonBaseRevisionHash = selected.Length == 2 ? selected[1].RevisionHash : string.Empty;
+            ChangesTitle = selected.Length == 2
+                ? "Changes: " + selected[1].ShortHash + " to " + selected[0].ShortHash
+                : selected.Length > 2 ? "Select at most two revisions to compare" : "Changed files";
+            BeginChangesLoad(Guid.NewGuid().ToString("N"));
         }
 
         /// <summary>
@@ -168,6 +192,8 @@ namespace LoreVS.UI
             SelectedRevisionChanges.Clear();
             _seenHashes.Clear();
             _selectedRevision = null;
+            ComparisonBaseRevisionHash = string.Empty;
+            ChangesTitle = "Changed files";
             _pendingChangesRevision = string.Empty;
             OnPropertyChanged(nameof(SelectedRevision));
 
@@ -299,7 +325,7 @@ namespace LoreVS.UI
                         continue;
                     }
 
-                    SelectedRevisionChanges.Add(new LoreChangeItem(change.Path, root, change.Status));
+                    SelectedRevisionChanges.Add(new LoreChangeItem(change.Path, root, change.Status, change.OriginalPath));
                 }
             }
 
@@ -419,28 +445,18 @@ namespace LoreVS.UI
             }
         }
 
-        private void OnRevisionSelected(LoreRevisionItem? revision)
-        {
-            if (revision == null)
-            {
-                BeginChangesLoad(string.Empty);
-                return;
-            }
-
-            JoinableTaskFactory jtf = ThreadHelper.JoinableTaskFactory;
-            jtf.RunAsync(() => LoadRevisionChangesAsync(revision)).FileAndForget("LoreVS/LoreHistory");
-        }
-
-        private async Task LoadRevisionChangesAsync(LoreRevisionItem revision)
+        public async Task LoadSelectedChangesAsync()
         {
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
 
+            LoreRevisionItem? revision = SelectedRevision;
             if (!HasRepository || _client == null || revision == null || string.IsNullOrEmpty(revision.RevisionHash))
             {
                 return;
             }
 
-            BeginChangesLoad(revision.RevisionHash);
+            string requestKey = _pendingChangesRevision;
+            string sourceHash = ComparisonBaseRevisionHash;
 
             try
             {
@@ -448,15 +464,33 @@ namespace LoreVS.UI
                 string root = _repositoryRoot!;
                 string hash = revision.RevisionHash;
 
-                LoreRevisionChange[] changes = await Task.Run(() => client.GetRevisionChanges(root, hash))
-                    .ConfigureAwait(true);
+                LoreRevisionChange[] changes = await Task.Run(() =>
+                {
+                    if (string.IsNullOrEmpty(sourceHash))
+                    {
+                        return client.GetRevisionChanges(root, hash);
+                    }
+
+                    LoreRevisionComparison comparison = client.CompareRevisions(root, sourceHash, hash);
+                    if (!comparison.Result.Success)
+                    {
+                        throw new InvalidOperationException(comparison.Result.CombinedText);
+                    }
+
+                    return comparison.Changes;
+                }).ConfigureAwait(true);
 
                 await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
-                ApplyRevisionChanges(hash, changes);
+                ApplyRevisionChanges(requestKey, changes);
             }
             catch (Exception ex)
             {
                 await ex.LogAsync();
+                await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+                if (requestKey == _pendingChangesRevision)
+                {
+                    StatusText = "Could not load changed files: " + ex.Message;
+                }
             }
         }
 

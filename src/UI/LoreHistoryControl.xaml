@@ -40,6 +40,8 @@
                 <DockPanel Grid.Row="0">
                     <TextBlock DockPanel.Dock="Top" FontWeight="Bold" Margin="0,0,0,6"
                                Text="{Binding Revisions.Count, StringFormat=History ({0})}" />
+                    <TextBlock DockPanel.Dock="Top" Text="Ctrl+click two revisions to compare."
+                               Margin="0,0,0,6" Opacity="0.7" TextWrapping="Wrap" />
 
                     <Button DockPanel.Dock="Bottom" x:Name="LoadMoreButton"
                             Content="Load more" Margin="0,6,0,0" Padding="8,2"
@@ -50,7 +52,8 @@
 
                     <ListBox x:Name="RevisionsList"
                              ItemsSource="{Binding Revisions}"
-                             SelectedItem="{Binding SelectedRevision, Mode=TwoWay}"
+                             SelectionMode="Extended"
+                             SelectionChanged="OnRevisionSelectionChanged"
                              BorderThickness="0"
                              HorizontalContentAlignment="Stretch"
                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
@@ -80,7 +83,7 @@
                               Background="Transparent" Margin="0,4" />
 
                 <TextBlock Grid.Row="2" FontWeight="Bold" Margin="0,0,0,6"
-                           Text="{Binding SelectedRevisionChanges.Count, StringFormat=Changed files ({0})}" />
+                           Text="{Binding ChangesTitle}" />
 
                 <!-- Changed files of the selected revision, loaded lazily on selection. Double-click
                      opens a diff against the revision's direct parent. -->

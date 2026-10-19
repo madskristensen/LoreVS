@@ -44,8 +44,8 @@ namespace LoreVS.UI
                 // it exists in this revision only.
                 if (item.Status == LoreFileStatus.Added || !hasParent)
                 {
-                    string? added = await Task.Run(() => Materialize(client, repositoryRoot, item.FullPath, revisionHash));
-                    await OpenDocumentAsync(added ?? item.FullPath);
+                    string added = await Task.Run(() => Materialize(client, repositoryRoot, item.FullPath, revisionHash));
+                    await OpenDocumentAsync(added);
                     return;
                 }
 
@@ -53,26 +53,18 @@ namespace LoreVS.UI
                 // parent.
                 if (item.Status == LoreFileStatus.Deleted)
                 {
-                    string? removed = await Task.Run(() => Materialize(client, repositoryRoot, item.FullPath, parentHash));
+                    string removed = await Task.Run(() => Materialize(client, repositoryRoot, item.FullPath, parentHash));
                     await OpenDocumentAsync(removed);
                     return;
                 }
 
-                string? parentPath = null;
-                string? revisionPath = null;
+                string parentPath = string.Empty;
+                string revisionPath = string.Empty;
                 await Task.Run(() =>
                 {
-                    parentPath = Materialize(client, repositoryRoot, item.FullPath, parentHash);
+                    parentPath = Materialize(client, repositoryRoot, item.OriginalFullPath ?? item.FullPath, parentHash);
                     revisionPath = Materialize(client, repositoryRoot, item.FullPath, revisionHash);
                 });
-
-                if (parentPath == null || revisionPath == null)
-                {
-                    // A side could not be produced (worker unavailable or unsupported); fall back to
-                    // opening whichever version exists so the gesture still does something useful.
-                    await OpenDocumentAsync(revisionPath ?? parentPath ?? item.FullPath);
-                    return;
-                }
 
                 await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
 
@@ -96,11 +88,9 @@ namespace LoreVS.UI
         }
 
         /// <summary>
-        /// Writes the content of <paramref name="fullPath"/> at <paramref name="revision"/> to a temp
-        /// file and returns its path, or <see langword="null"/> when it could not be produced (for
-        /// example the file did not exist at that revision).
+        /// Writes historical content without falling back to the working copy on failure.
         /// </summary>
-        private static string? Materialize(ILoreClient client, string repositoryRoot, string fullPath, string revision)
+        internal static string Materialize(ILoreClient client, string repositoryRoot, string fullPath, string revision)
         {
             string tempPath = Path.Combine(
                 Path.GetTempPath(),
@@ -113,7 +103,45 @@ namespace LoreVS.UI
                 return tempPath;
             }
 
-            return null;
+            throw new InvalidOperationException("Could not read " + fullPath + " at " + Shorten(revision) + ": " + result.CombinedText);
+        }
+
+        public static async Task ShowComparisonAsync(ILoreClient client, string repositoryRoot,
+            LoreChangeItem item, string sourceRevision, string targetRevision)
+        {
+            SweepStaleFiles();
+            try
+            {
+                (string Left, string Right) paths = await Task.Run(() =>
+                    MaterializeComparison(client, repositoryRoot, item, sourceRevision, targetRevision));
+                await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+                EnvDTE.DTE dte = await VS.GetRequiredServiceAsync<EnvDTE.DTE, EnvDTE.DTE>();
+                dte.ExecuteCommand("Tools.DiffFiles", Quote(paths.Left) + " " + Quote(paths.Right) + " " +
+                    Quote(Path.GetFileName(item.OriginalFullPath ?? item.FullPath) + " (" + Shorten(sourceRevision) + ")") + " " +
+                    Quote(item.FileName + " (" + Shorten(targetRevision) + ")"));
+            }
+            catch (Exception ex)
+            {
+                await ex.LogAsync();
+                await VS.MessageBox.ShowErrorAsync("Lore", "Could not open the diff:\n\n" + ex.Message);
+            }
+        }
+
+        internal static (string Left, string Right) MaterializeComparison(ILoreClient client, string repositoryRoot,
+            LoreChangeItem item, string sourceRevision, string targetRevision)
+        {
+            string left = item.Status == LoreFileStatus.Added ? CreateEmptyFile(item.FileName)
+                : Materialize(client, repositoryRoot, item.OriginalFullPath ?? item.FullPath, sourceRevision);
+            string right = item.Status == LoreFileStatus.Deleted ? CreateEmptyFile(item.FileName)
+                : Materialize(client, repositoryRoot, item.FullPath, targetRevision);
+            return (left, right);
+        }
+
+        private static string CreateEmptyFile(string name)
+        {
+            string path = Path.Combine(Path.GetTempPath(), TempPrefix + Guid.NewGuid().ToString("N") + "-" + name);
+            File.WriteAllBytes(path, Array.Empty<byte>());
+            return path;
         }
 
         // Temp files created for diffing accumulate because the IDE owns the diff window lifetime;
@@ -131,7 +159,10 @@ namespace LoreVS.UI
                             File.Delete(file);
                         }
                     }
-                    catch { /* a file still open in a diff window stays; swept next time */ }
+                    catch (Exception ex)
+                    {
+                        ex.LogAsync().FireAndForget();
+                    }
                 }
             }
             catch (Exception ex)

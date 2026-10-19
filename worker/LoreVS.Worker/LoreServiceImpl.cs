@@ -1245,6 +1245,57 @@ namespace LoreVS.Worker
             return changes.ToArray();
         }
 
+        /// <inheritdoc/>
+        public async Task<LoreRevisionComparison> CompareRevisionsAsync(string repositoryRoot, string sourceRevision, string targetRevision, CancellationToken cancellationToken)
+        {
+            if (string.IsNullOrWhiteSpace(repositoryRoot) || string.IsNullOrWhiteSpace(sourceRevision) || string.IsNullOrWhiteSpace(targetRevision))
+            {
+                return new LoreRevisionComparison { Result = LoreCommandResult.Failed("A repository and two revision hashes are required.") };
+            }
+
+            var changes = new List<LoreRevisionChange>();
+            var errors = new ConcurrentQueue<Exception>();
+            LoreCommandResult result = await ExecuteAsync(identity: null, offline: false, repositoryRoot, globalArgs =>
+            {
+                using var args = new LoreRevisionDiffArgs { RevisionSource = sourceRevision, RevisionTarget = targetRevision };
+                Lore.RevisionDiff(globalArgs, args).Callback((loreEvent, userContext) =>
+                {
+                    try
+                    {
+                        if (loreEvent.Tag != LoreEventTag.REVISION_DIFF_FILE)
+                        {
+                            return;
+                        }
+
+                        LoreRevisionDiffFileEventDataFFI entry = loreEvent.GetData<LoreRevisionDiffFileEventDataFFI>();
+                        if (!entry.OldIsFile && !entry.NewIsFile)
+                        {
+                            return;
+                        }
+
+                        changes.Add(new LoreRevisionChange
+                        {
+                            Path = NormalizePath(repositoryRoot, entry.Path),
+                            OriginalPath = string.IsNullOrEmpty(entry.FromPath) ? string.Empty : NormalizePath(repositoryRoot, entry.FromPath),
+                            Status = LoreRevisionMapper.MapDelta(entry.Action, flagModify: true),
+                        });
+                    }
+                    catch (Exception ex)
+                    {
+                        _ = ex.LogAsync();
+                        errors.Enqueue(ex);
+                    }
+                }).Wait();
+            }).ConfigureAwait(false);
+
+            if (result.Success && errors.TryDequeue(out Exception? error))
+            {
+                result = MapFailure(error);
+            }
+
+            return new LoreRevisionComparison { Result = result, Changes = result.Success ? changes.ToArray() : Array.Empty<LoreRevisionChange>() };
+        }
+
         /// <summary>
         /// Copies a revision metadata event into the corresponding <see cref="LoreRevisionEntry"/>
         /// member. Only the well-known keys the history window needs are read; unknown keys and

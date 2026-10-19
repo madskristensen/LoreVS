@@ -86,6 +86,12 @@ namespace LoreVS.Tests
                     new[] { "Revision from clone", "Second server revision", "Initial server revision" },
                     history.Entries.Select(entry => entry.Message).ToArray());
                 Assert.IsFalse(history.HasMore);
+                LoreRevisionComparison comparison = verifier.CompareRevisions(verification, initialHash, history.Entries[0].RevisionHash);
+                AssertServerSuccess(comparison.Result, "Compare uncached nonadjacent remote revisions");
+                Assert.AreEqual(3, comparison.Changes.Length);
+                Assert.AreEqual(LoreFileStatus.Modified, comparison.Changes.Single(c => Path.GetFileName(c.Path) == "file.txt").Status);
+                Assert.AreEqual(LoreFileStatus.Added, comparison.Changes.Single(c => Path.GetFileName(c.Path) == "added.txt").Status);
+                Assert.AreEqual(LoreFileStatus.Added, comparison.Changes.Single(c => Path.GetFileName(c.Path) == "from-clone.txt").Status);
                 LoreRevisionChange[] changes = verifier.GetRevisionChanges(verification, latestHash);
                 Assert.AreEqual(2, changes.Length);
                 Assert.IsTrue(changes.Any(change => change.Path == Path.Combine(verification, "file.txt") && change.Status == LoreFileStatus.Modified));

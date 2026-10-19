@@ -173,5 +173,8 @@ namespace LoreVS.SourceControl
         /// </summary>
         LoreRevisionChange[] GetRevisionChanges(string repositoryRoot, string revision);
 
+        /// <summary>Compares two committed revisions without changing the working tree.</summary>
+        LoreRevisionComparison CompareRevisions(string repositoryRoot, string sourceRevision, string targetRevision);
+
     }
 }
