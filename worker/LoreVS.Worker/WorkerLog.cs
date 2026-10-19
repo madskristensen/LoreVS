@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Text;
+using System.Threading.Tasks;
 
 namespace LoreVS.Worker
 {
@@ -18,6 +19,12 @@ namespace LoreVS.Worker
 
         /// <summary>Absolute path of the log file, for surfacing to the user.</summary>
         public static string Path => _path;
+
+        internal static Task LogAsync(this Exception exception)
+        {
+            Write(exception.ToString());
+            return Task.CompletedTask;
+        }
 
         private static string ResolvePath()
         {

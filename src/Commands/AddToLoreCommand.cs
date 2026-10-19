@@ -71,14 +71,6 @@ namespace LoreVS.Commands
                     return;
                 }
 
-                if (!await LoreServerHealth.IsReachableAsync(endpoint))
-                {
-                    await VS.MessageBox.ShowErrorAsync("Lore",
-                        $"No Lore server is reachable at {endpoint.ServerUrl}.\n\nStart a server (e.g. the demo " +
-                        "server on lore://127.0.0.1:41337), or choose a local repository.");
-                    return;
-                }
-
                 url = endpoint.RepositoryUrl(repoName);
             }
 

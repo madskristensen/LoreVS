@@ -34,8 +34,11 @@ the next time you open the solution.
 
 Right-click the solution node and choose **Lore > Clone Lore Repository...**.
 Paste a repository URL (e.g. `lore://127.0.0.1:41337/my-project`) and pick a
-local folder; Lore checks the server is reachable, clones the working tree, and
+local folder; Lore connects through the SDK, clones the working tree, and
 records the remote in `.lore` so push and pull work immediately.
+Clone and server-backed create do not require the server's optional HTTP health
+endpoint or assume an HTTP port relative to its Lore port. Connection and
+authentication errors are reported by the Lore operation itself.
 
 ![Clone Repository](art/clone-repo.png)
 
@@ -79,6 +82,9 @@ From here you can:
   selected (for example **Commit 2** / **Commit 2 and Push**) and only those
   files are committed. Tick **Amend latest revision** to fold the selected
   changes into the previous revision instead.
+  Partial commits preserve excluded working files and recorded renames. Resolve
+  or abort an in-progress merge before making a partial commit, so its staged
+  resolutions are not reset.
 - Expand or collapse folders, and double-click a file (or right-click >
   **Open Diff**) to compare the working
   copy against the committed version in the native Visual Studio diff viewer.
@@ -86,6 +92,10 @@ From here you can:
   committed state.
 - Use the toolbar to **Pull** (sync the latest remote revisions), **Push**
   committed revisions, or **Refresh** the change list.
+
+If Pull falls back to local history because no remote is configured or the remote
+branch cannot be queried, the extension displays a warning and records it in the
+Output window. Local synchronization does not mean remote changes were fetched.
 
 ## Browse revision history
 
@@ -129,6 +139,13 @@ the original operation is retried. The session is stored by Lore, so later
 operations against the same server do not prompt again. There is no separate
 sign-in command - just run the operation you want, the same way Git prompts
 through its credential manager.
+
+The extension bundles the LoreVcs 0.10.0 SDK and its matching Windows native
+runtime; updating the separately installed Lore CLI does not update this payload.
+Lore 0.9 changed the credential store without migrating older sessions, so users
+upgrading from the previous extension may need to sign in again. Permission
+denials and connection failures are reported without repeatedly prompting for
+sign-in; only Lore's `NotAuthenticated` status triggers the sign-in/retry flow.
 
 ## Work with branches
 

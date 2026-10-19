@@ -504,6 +504,12 @@ namespace LoreVS.Tests
             StringAssert.Contains(conflicted, "<<<<<<<");
             StringAssert.Contains(conflicted, ">>>>>>>");
 
+            LoreCommandResult partialCommit = client.CommitFiles(
+                repoPath, new[] { shared }, "Must not discard merge state", "test@lorevs", amend: false);
+            Assert.IsFalse(partialCommit.Success, "Partial commits must not reset an in-progress merge.");
+            StringAssert.Contains(partialCommit.Error, "Resolve or abort");
+            Assert.AreEqual(conflicted, File.ReadAllText(shared));
+
             // Resolve by writing merged content, then finalize through the worker.
             File.WriteAllText(shared, "line one\nmerged line\nline three\n");
             LoreCommandResult resolve = client.ResolveMerge(
@@ -564,6 +570,124 @@ namespace LoreVS.Tests
                 "completed the request - reproduces the IDE hang).");
         }
 
+        [TestMethod]
+        public void History_MapsMetadataPagesAndMaterializesParentContent()
+        {
+            string worker = RequireWorker();
+            string repoPath = Path.Combine(_tempRoot, "repo");
+            SeedRepository(worker, repoPath);
+
+            using var client = new LoreBrokeredClient(worker);
+            Assert.IsTrue(client.StageAll(repoPath).Success);
+            long beforeCommit = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            LoreCommandResult commit = client.Commit(repoPath, "Second revision\nFull message", "test@lorevs");
+            Assert.IsTrue(commit.Success, commit.CombinedText);
+
+            LoreRevisionPage first = client.GetRevisionHistory(repoPath, string.Empty, 1);
+            Assert.AreEqual(1, first.Entries.Length);
+            Assert.IsTrue(first.HasMore);
+            LoreRevisionEntry latest = first.Entries[0];
+            Assert.AreEqual("Second revision\nFull message", latest.Message);
+            Assert.AreEqual("test@lorevs", latest.Author);
+            Assert.AreEqual(64, latest.RevisionHash.Length);
+            Assert.AreEqual(64, latest.ParentRevisionHash.Length);
+            Assert.IsTrue(latest.TimestampUnixMs >= beforeCommit);
+            Assert.IsTrue(latest.TimestampUnixMs <= DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+
+            LoreRevisionPage next = client.GetRevisionHistory(repoPath, latest.RevisionHash, 1);
+            Assert.AreEqual(1, next.Entries.Length);
+            Assert.AreEqual(latest.ParentRevisionHash, next.Entries[0].RevisionHash);
+            Assert.AreEqual("Initial commit", next.Entries[0].Message);
+
+            LoreRevisionChange[] changes = client.GetRevisionChanges(repoPath, latest.RevisionHash);
+            Assert.IsTrue(changes.Any(change => change.Path == Path.Combine(repoPath, "file.txt") && change.Status == LoreFileStatus.Modified));
+            Assert.IsTrue(changes.Any(change => change.Path == Path.Combine(repoPath, "untracked.txt") && change.Status == LoreFileStatus.Added));
+
+            string output = Path.Combine(_tempRoot, "revision.txt");
+            LoreCommandResult write = client.WriteFileAtRevision(repoPath, "file.txt", latest.RevisionHash, output);
+            Assert.IsTrue(write.Success, write.CombinedText);
+            Assert.AreEqual("hello lore - changed", File.ReadAllText(output));
+            string parentOutput = Path.Combine(_tempRoot, "parent.txt");
+            write = client.WriteFileAtRevision(repoPath, "file.txt", latest.ParentRevisionHash, parentOutput);
+            Assert.IsTrue(write.Success, write.CombinedText);
+            Assert.AreEqual("hello lore", File.ReadAllText(parentOutput));
+            Assert.AreEqual("hello lore - changed", File.ReadAllText(Path.Combine(repoPath, "file.txt")));
+        }
+
+        [TestMethod]
+        public void CommitFiles_UnselectedMoveRemainsPendingAfterPartialCommit()
+        {
+            string worker = RequireWorker();
+            string repoPath = Path.Combine(_tempRoot, "repo");
+            SeedRepository(worker, repoPath);
+
+            using var client = new LoreBrokeredClient(worker);
+            Assert.IsTrue(client.StageAll(repoPath).Success);
+            Assert.IsTrue(client.Commit(repoPath, "Clean base", "test@lorevs").Success);
+
+            string oldPath = Path.Combine(repoPath, "file.txt");
+            string newPath = Path.Combine(repoPath, "renamed.txt");
+            File.Move(oldPath, newPath);
+            LoreCommandResult move = client.RecordMove(repoPath, oldPath, newPath);
+            Assert.IsTrue(move.Success, move.CombinedText);
+            string addedPath = Path.Combine(repoPath, "selected.txt");
+            File.WriteAllText(addedPath, "selected content");
+
+            LoreCommandResult commit = client.CommitFiles(repoPath, new[] { addedPath }, "Partial commit", "test@lorevs", amend: false);
+            Assert.IsTrue(commit.Success, commit.CombinedText);
+            LoreRevisionEntry revision = client.GetRevisionHistory(repoPath, string.Empty, 1).Entries.Single();
+            LoreRevisionChange[] changes = client.GetRevisionChanges(repoPath, revision.RevisionHash);
+            Assert.AreEqual(1, changes.Length);
+            Assert.AreEqual(addedPath, changes[0].Path);
+            Assert.AreEqual(LoreFileStatus.Added, changes[0].Status);
+            LoreStatusEntry pendingMove = client.GetRepositorySnapshot(repoPath).Files.Single(entry => entry.Path == newPath);
+            Assert.AreEqual(LoreFileStatus.Renamed, pendingMove.Status);
+            Assert.AreEqual(oldPath, pendingMove.OriginalPath);
+
+            commit = client.CommitFiles(repoPath, new[] { newPath }, "Commit remaining move", "test@lorevs", amend: false);
+            Assert.IsTrue(commit.Success, commit.CombinedText);
+            Assert.AreEqual(0, client.GetRepositorySnapshot(repoPath).Files.Length);
+        }
+
+        [TestMethod]
+        public void CreateRepository_ExistingLocalRepoPreservesNativeFailureOverRpc()
+        {
+            string worker = RequireWorker();
+            string repoPath = Path.Combine(_tempRoot, "repo");
+            SeedRepository(worker, repoPath);
+
+            using var client = new LoreBrokeredClient(worker);
+            LoreCommandResult result = client.CreateRepository(repoPath, "repo", "test@lorevs");
+
+            Assert.IsFalse(result.Success);
+            Assert.AreEqual(58, result.ExitCode);
+            Assert.IsFalse(result.RequiresAuthentication);
+            StringAssert.Contains(result.Error.ToLowerInvariant(), "already exist");
+            Assert.AreEqual(string.Empty, result.Warning);
+        }
+
+        [TestMethod]
+        public void Sync_WithoutRemote_ReturnsLocalHistoryWarningOverRpc()
+        {
+            string worker = RequireWorker();
+            string repoPath = Path.Combine(_tempRoot, "repo");
+            SeedRepository(worker, repoPath);
+
+            using var client = new LoreBrokeredClient(worker);
+            Assert.IsTrue(client.StageAll(repoPath).Success);
+            Assert.IsTrue(client.Commit(repoPath, "Clean base", "test@lorevs").Success);
+
+            LoreCommandResult result = client.Sync(repoPath);
+
+            Assert.IsTrue(result.Success, result.CombinedText);
+            Assert.AreEqual(0, result.ExitCode);
+            Assert.IsFalse(result.RequiresAuthentication);
+            Assert.AreEqual(
+                "No Lore remote is configured. Only local revisions were synchronized; no remote changes were fetched.",
+                result.Warning);
+            Assert.AreEqual(result.Warning, result.CombinedText);
+        }
+
         /// <summary>Runs the worker in <c>--seed</c> mode to create a real offline repository.</summary>
         private static void SeedRepository(string workerExe, string repoPath)
         {
@@ -614,19 +738,21 @@ namespace LoreVS.Tests
 
         private static string? FindWorkerExecutable()
         {
+#if DEBUG
+            const string configuration = "Debug";
+#else
+            const string configuration = "Release";
+#endif
             var dir = new DirectoryInfo(AppContext.BaseDirectory);
             while (dir != null)
             {
                 string workerProject = Path.Combine(dir.FullName, "worker", "LoreVS.Worker", "bin");
                 if (Directory.Exists(workerProject))
                 {
-                    foreach (string config in new[] { "Release", "Debug" })
+                    string candidate = Path.Combine(workerProject, configuration, "net9.0", "win-x64", "LoreVS.Worker.exe");
+                    if (File.Exists(candidate))
                     {
-                        string candidate = Path.Combine(workerProject, config, "net9.0", "win-x64", "LoreVS.Worker.exe");
-                        if (File.Exists(candidate))
-                        {
-                            return candidate;
-                        }
+                        return candidate;
                     }
                 }
 

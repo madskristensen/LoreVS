@@ -34,7 +34,7 @@ namespace LoreVS.Commands
 
             string repositoryUrl = dialog.RepositoryUrl;
             if (string.IsNullOrWhiteSpace(repositoryUrl) ||
-                !LoreServerEndpoint.TryParse(repositoryUrl, out LoreServerEndpoint endpoint))
+                !LoreServerEndpoint.TryParse(repositoryUrl, out _))
             {
                 await VS.MessageBox.ShowErrorAsync("Lore", "Enter a valid lore:// repository URL.");
                 return;
@@ -54,12 +54,6 @@ namespace LoreVS.Commands
             if (!await Task.Run(() => client.IsAvailable))
             {
                 await VS.MessageBox.ShowErrorAsync("Lore", "The Lore worker could not be started, so the SDK is unavailable.");
-                return;
-            }
-
-            if (!await LoreServerHealth.IsReachableAsync(endpoint))
-            {
-                await VS.MessageBox.ShowErrorAsync("Lore", $"No Lore server is reachable at {endpoint.ServerUrl}.");
                 return;
             }
 

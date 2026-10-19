@@ -15,9 +15,6 @@ namespace LoreVS.Server
         /// <summary>gRPC/QUIC port of the zero-config demo server.</summary>
         public const int DefaultGrpcPort = 41337;
 
-        /// <summary>HTTP health-check port of the zero-config demo server.</summary>
-        public const int DefaultHttpPort = 41339;
-
         public LoreServerEndpoint(string host, int grpcPort)
         {
             Host = string.IsNullOrWhiteSpace(host) ? DefaultHost : host;
@@ -28,17 +25,8 @@ namespace LoreVS.Server
 
         public int GrpcPort { get; }
 
-        /// <summary>
-        /// HTTP port used for the server health check. The demo server exposes HTTP two ports
-        /// above the QUIC/gRPC port (41337 -> 41339), the only relationship the SDK guarantees.
-        /// </summary>
-        public int HttpPort => GrpcPort + 2;
-
         /// <summary>The gRPC/QUIC server URL (e.g. lore://127.0.0.1:41337).</summary>
         public string ServerUrl => $"lore://{Host}:{GrpcPort}";
-
-        /// <summary>The health-check endpoint (e.g. http://127.0.0.1:41339/health_check).</summary>
-        public string HealthCheckUrl => $"http://{Host}:{HttpPort}/health_check";
 
         /// <summary>Builds the repository URL for <paramref name="repositoryName"/> on this server.</summary>
         public string RepositoryUrl(string repositoryName) => $"{ServerUrl}/{repositoryName}";

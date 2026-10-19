@@ -113,6 +113,7 @@ namespace LoreVS.Worker
                         if (!string.IsNullOrWhiteSpace(workingDirectory))
                         {
                             globalArgs.RepositoryPath = workingDirectory;
+                            globalArgs.WorkingDirectory = workingDirectory;
                         }
 
                         try
@@ -204,7 +205,7 @@ namespace LoreVS.Worker
             // are not captured (and disposed) across the await boundary.
             await RunExclusiveAsync(() =>
             {
-                using var globalArgs = new LoreGlobalArgs { RepositoryPath = repositoryRoot, Offline = true };
+                using var globalArgs = new LoreGlobalArgs { RepositoryPath = repositoryRoot, WorkingDirectory = repositoryRoot, Offline = true };
                 using var statusArgs = new LoreRepositoryStatusArgs
                 {
                     Scan = true,
@@ -261,7 +262,7 @@ namespace LoreVS.Worker
             // call can hang). Folding both into the one proven status call avoids that hang entirely.
             await RunExclusiveAsync(() =>
             {
-                using var globalArgs = new LoreGlobalArgs { RepositoryPath = repositoryRoot, Offline = true };
+                using var globalArgs = new LoreGlobalArgs { RepositoryPath = repositoryRoot, WorkingDirectory = repositoryRoot, Offline = true };
                 using var statusArgs = new LoreRepositoryStatusArgs
                 {
                     Scan = true,
@@ -329,7 +330,7 @@ namespace LoreVS.Worker
 
             await RunExclusiveAsync(() =>
             {
-                using var globalArgs = new LoreGlobalArgs { RepositoryPath = repositoryRoot, Offline = true };
+                using var globalArgs = new LoreGlobalArgs { RepositoryPath = repositoryRoot, WorkingDirectory = repositoryRoot, Offline = true };
                 using var statusArgs = new LoreRepositoryStatusArgs
                 {
                     // Mirror the (proven) file-status scan args: the revision event is emitted as
@@ -486,22 +487,49 @@ namespace LoreVS.Worker
 
             return ExecuteAsync(identity, offline: true, workingDirectory, globalArgs =>
             {
-                // Reset the staging area first so the revision contains exactly the selected files,
-                // independent of whatever happened to be staged before (e.g. a prior partial stage or
-                // a stage left behind by the CLI).
-                using (var unstageArgs = new LoreFileUnstageArgs { Paths = new[] { workingDirectory } })
+                bool mergeInProgress = false;
+                var callbackErrors = new ConcurrentQueue<Exception>();
+                using (var statusArgs = new LoreRepositoryStatusArgs { RevisionOnly = true })
                 {
-                    Lore.FileUnstage(globalArgs, unstageArgs).Wait();
+                    Lore.RepositoryStatus(globalArgs, statusArgs).Callback((loreEvent, userContext) =>
+                    {
+                        try
+                        {
+                            if (loreEvent.Tag == LoreEventTag.REPOSITORY_STATUS_REVISION)
+                            {
+                                LoreRepositoryStatusRevisionEventDataFFI revision = loreEvent.GetData<LoreRepositoryStatusRevisionEventDataFFI>();
+                                mergeInProgress = !LoreRevisionMapper.IsEmptyHash(HashToHex(revision.RevisionMerged));
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _ = ex.LogAsync();
+                            callbackErrors.Enqueue(ex);
+                        }
+                    }).Wait();
+                }
+
+                if (callbackErrors.TryDequeue(out Exception? callbackError))
+                {
+                    throw new InvalidOperationException("Could not read Lore revision status.", callbackError);
+                }
+
+                if (mergeInProgress)
+                {
+                    throw new InvalidOperationException("Resolve or abort the current Lore merge before making a partial commit.");
+                }
+
+                // Unstage retains dirty action flags in newer Lore builds. Reset the staged anchor
+                // instead, without changing working files, then reconstruct only the selected work.
+                using (var resetArgs = new LoreRepositoryStatusArgs { Reset = true, RevisionOnly = true })
+                {
+                    Lore.RepositoryStatus(globalArgs, resetArgs).Wait();
                 }
 
                 var movedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 foreach (LoreMoveEntry move in moves ?? Array.Empty<LoreMoveEntry>())
                 {
-                    using var moveArgs = new LoreFileStageMoveArgs
-                    {
-                        FromPath = move.OldPath,
-                        ToPath = move.NewPath,
-                    };
+                    using var moveArgs = new LoreFileStageMoveArgs { FromPath = move.OldPath, ToPath = move.NewPath };
                     Lore.FileStageMove(globalArgs, moveArgs).Wait();
                     movedPaths.Add(NormalizePath(workingDirectory, move.NewPath));
                 }
@@ -546,7 +574,7 @@ namespace LoreVS.Worker
 
             await RunExclusiveAsync(() =>
             {
-                using var globalArgs = new LoreGlobalArgs { RepositoryPath = repositoryRoot, Offline = true };
+                using var globalArgs = new LoreGlobalArgs { RepositoryPath = repositoryRoot, WorkingDirectory = repositoryRoot, Offline = true };
                 using var args = new LoreBranchListArgs { Archived = false };
 
                 Lore.BranchList(globalArgs, args).Callback((loreEvent, userContext) =>
@@ -727,7 +755,7 @@ namespace LoreVS.Worker
                 await RunExclusiveAsync(
                     () =>
                     {
-                        var globalArgs = new LoreGlobalArgs { RepositoryPath = workingDirectory, Offline = offline };
+                        var globalArgs = new LoreGlobalArgs { RepositoryPath = workingDirectory, WorkingDirectory = workingDirectory, Offline = offline };
                         try
                         {
                             using var args = new LoreBranchSwitchArgs { Branch = branchName };
@@ -857,7 +885,7 @@ namespace LoreVS.Worker
                 await RunExclusiveAsync(
                     () =>
                     {
-                        var globalArgs = new LoreGlobalArgs { RepositoryPath = workingDirectory, Offline = offline };
+                        var globalArgs = new LoreGlobalArgs { RepositoryPath = workingDirectory, WorkingDirectory = workingDirectory, Offline = offline };
                         if (!string.IsNullOrWhiteSpace(identity))
                         {
                             globalArgs.Identity = identity;
@@ -979,13 +1007,60 @@ namespace LoreVS.Worker
         }
 
         /// <inheritdoc/>
-        public Task<LoreCommandResult> SyncAsync(string workingDirectory, CancellationToken cancellationToken)
+        public async Task<LoreCommandResult> SyncAsync(string workingDirectory, CancellationToken cancellationToken)
         {
-            return ExecuteAsync(identity: null, offline: false, workingDirectory, globalArgs =>
+            var warnings = new ConcurrentQueue<string>();
+            var callbackErrors = new ConcurrentQueue<Exception>();
+            LoreCommandResult result = await ExecuteAsync(identity: null, offline: false, workingDirectory, globalArgs =>
             {
                 using var args = new LoreRevisionSyncArgs();
-                Lore.RevisionSync(globalArgs, args).Wait();
-            });
+                Lore.RevisionSync(globalArgs, args).Callback((loreEvent, userContext) =>
+                {
+                    try
+                    {
+                        if (loreEvent.Tag == LoreEventTag.REVISION_SYNC_TARGET)
+                        {
+                            LoreRevisionSyncTargetEventDataFFI target = loreEvent.GetData<LoreRevisionSyncTargetEventDataFFI>();
+                            string warning = GetSyncWarning(target.Local, target.RemoteAvailable, target.RemoteAuthorized);
+                            if (!string.IsNullOrEmpty(warning))
+                            {
+                                warnings.Enqueue(warning);
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _ = ex.LogAsync();
+                        callbackErrors.Enqueue(ex);
+                    }
+                }).Wait();
+            }).ConfigureAwait(false);
+
+            if (result.Success && callbackErrors.TryDequeue(out Exception? callbackError))
+            {
+                result = MapFailure(callbackError);
+            }
+
+            result.Warning = string.Join(Environment.NewLine, warnings.Distinct());
+            return result;
+        }
+
+        internal static string GetSyncWarning(bool local, bool remoteAvailable, bool remoteAuthorized)
+        {
+            if (!local)
+            {
+                return string.Empty;
+            }
+
+            if (!remoteAvailable)
+            {
+                return "No Lore remote is configured. Only local revisions were synchronized; no remote changes were fetched.";
+            }
+
+            return remoteAuthorized
+                ? string.Empty
+                : "Lore could not query the remote branch with the current connection or permissions. " +
+                    "Only local revisions were synchronized; remote changes may be missing.";
         }
 
         /// <inheritdoc/>
@@ -998,6 +1073,13 @@ namespace LoreVS.Worker
 
             return ExecuteAsync(identity: null, offline: true, workingDirectory, globalArgs =>
             {
+                // A moved destination is absent from the committed tree. Clear its staged flags
+                // before reset so Lore can discard the dirty move without rejecting a staged node.
+                using (var unstageArgs = new LoreFileUnstageArgs { Paths = paths })
+                {
+                    Lore.FileUnstage(globalArgs, unstageArgs).Wait();
+                }
+
                 using var args = new LoreFileResetArgs { Paths = paths };
                 Lore.FileReset(globalArgs, args).Wait();
             });
@@ -1054,7 +1136,7 @@ namespace LoreVS.Worker
             // per-revision RevisionInfo round trip.
             await RunExclusiveAsync(() =>
             {
-                using var globalArgs = new LoreGlobalArgs { RepositoryPath = repositoryRoot, Offline = true };
+                using var globalArgs = new LoreGlobalArgs { RepositoryPath = repositoryRoot, WorkingDirectory = repositoryRoot, Offline = true };
                 using var historyArgs = new LoreRevisionHistoryArgs
                 {
                     Revision = startAfterRevision,
@@ -1123,7 +1205,7 @@ namespace LoreVS.Worker
             // relative to its direct parent. This is read-only and never mutates the working tree.
             await RunExclusiveAsync(() =>
             {
-                using var globalArgs = new LoreGlobalArgs { RepositoryPath = repositoryRoot, Offline = true };
+                using var globalArgs = new LoreGlobalArgs { RepositoryPath = repositoryRoot, WorkingDirectory = repositoryRoot, Offline = true };
                 using var infoArgs = new LoreRevisionInfoArgs { Revision = revision, Delta = true };
 
                 Lore.RevisionInfo(globalArgs, infoArgs).Callback((loreEvent, userContext) =>
@@ -1171,21 +1253,21 @@ namespace LoreVS.Worker
             switch (meta.Key)
             {
                 case "message":
-                    if (meta.Value.Tag == LoreMetadataTag.STRING)
+                    if (meta.Value.Tag == LoreMetadataType.STRING)
                     {
                         entry.Message = meta.Value.String ?? string.Empty;
                     }
 
                     break;
                 case "created-by":
-                    if (meta.Value.Tag == LoreMetadataTag.STRING)
+                    if (meta.Value.Tag == LoreMetadataType.STRING)
                     {
                         entry.Author = meta.Value.String ?? string.Empty;
                     }
 
                     break;
                 case "timestamp":
-                    if (meta.Value.Tag == LoreMetadataTag.NUMERIC)
+                    if (meta.Value.Tag == LoreMetadataType.NUMERIC)
                     {
                         entry.TimestampUnixMs = (long)meta.Value.Numeric;
                     }
@@ -1206,7 +1288,7 @@ namespace LoreVS.Worker
             {
                 await RunExclusiveAsync(() =>
                 {
-                    using var globalArgs = new LoreGlobalArgs { RepositoryPath = repositoryRoot, Offline = true };
+                    using var globalArgs = new LoreGlobalArgs { RepositoryPath = repositoryRoot, WorkingDirectory = repositoryRoot, Offline = true };
                     using var args = new LoreBranchListArgs { Archived = false };
 
                     Lore.BranchList(globalArgs, args).Callback((loreEvent, userContext) =>
@@ -1254,7 +1336,7 @@ namespace LoreVS.Worker
                 // across the managed/native boundary that crashes the whole worker process).
                 await RunExclusiveAsync(() =>
                 {
-                    var globalArgs = new LoreGlobalArgs { RepositoryPath = workingDirectory, Offline = offline };
+                    var globalArgs = new LoreGlobalArgs { RepositoryPath = workingDirectory, WorkingDirectory = workingDirectory, Offline = offline };
                     if (!string.IsNullOrWhiteSpace(identity))
                     {
                         globalArgs.Identity = identity;
@@ -1274,11 +1356,8 @@ namespace LoreVS.Worker
             }
             catch (Exception ex)
             {
-                string message = Unwrap(ex).Message;
-                return new LoreCommandResult(false, 1, string.Empty, message)
-                {
-                    RequiresAuthentication = IsAuthError(message),
-                };
+                await ex.LogAsync().ConfigureAwait(false);
+                return MapFailure(ex);
             }
         }
 
@@ -1306,34 +1385,24 @@ namespace LoreVS.Worker
         }
 
         /// <summary>
-        /// Heuristically classifies a failure message as authentication/authorization related so the
-        /// package can offer the reactive sign-in prompt. The native SDK surfaces server auth failures
-        /// as plain error text, so this matches the common credential/permission vocabulary.
+        /// Preserves the SDK status and only offers sign-in for NotAuthenticated (12), not permission
+        /// denial or transport failures. Non-SDK exceptions do not carry an authentication status.
         /// </summary>
-        internal static bool IsAuthError(string message)
+        internal static LoreCommandResult MapFailure(Exception exception)
         {
-            if (string.IsNullOrEmpty(message))
+            Exception error = Unwrap(exception);
+            if (error is LoreError loreError)
             {
-                return false;
-            }
-
-            string[] markers =
-            {
-                "unauthenticated", "unauthorized", "authentication", "not authenticated",
-                "permission denied", "access denied", "forbidden", "not logged in",
-                "no credentials", "credential", "invalid token", "token expired",
-                "expired token", "please log in", "please login", "sign in", "401", "403",
-            };
-
-            foreach (string marker in markers)
-            {
-                if (message.IndexOf(marker, StringComparison.OrdinalIgnoreCase) >= 0)
+                const int notAuthenticated = 12;
+                string? message = loreError.ErrorDetail?.Message;
+                return new LoreCommandResult(false, loreError.ReturnCode, string.Empty,
+                    string.IsNullOrWhiteSpace(message) ? $"Lore operation failed with code {loreError.ReturnCode}" : message)
                 {
-                    return true;
-                }
+                    RequiresAuthentication = loreError.ReturnCode == notAuthenticated,
+                };
             }
 
-            return false;
+            return LoreCommandResult.Failed(error.Message);
         }
 
         /// <summary>Converts a Lore revision hash to the lowercase hex string the SDK expects.</summary>
@@ -1344,8 +1413,15 @@ namespace LoreVS.Worker
         }
 
         /// <summary>Unwraps the inner exception from the SDK's blocking call, if present.</summary>
-        private static Exception Unwrap(Exception ex) =>
-            ex is AggregateException agg && agg.InnerException != null ? agg.InnerException : ex;
+        private static Exception Unwrap(Exception ex)
+        {
+            while (ex is AggregateException aggregate && aggregate.InnerExceptions.Count == 1)
+            {
+                ex = aggregate.InnerExceptions[0];
+            }
+
+            return ex;
+        }
 
         /// <summary>Returns an absolute, normalized path for a status entry relative to the repo root.</summary>
         private static string NormalizePath(string repositoryRoot, string path)

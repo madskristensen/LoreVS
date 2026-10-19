@@ -1,4 +1,5 @@
 using System;
+using System.Text.Json;
 using LoreVS.SourceControl;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -65,6 +66,47 @@ namespace LoreVS.Tests
         {
             var result = new LoreCommandResult(true, 0, string.Empty, string.Empty);
             Assert.AreEqual(string.Empty, result.CombinedText);
+        }
+
+        [TestMethod]
+        public void Warning_DefaultsToEmpty()
+        {
+            var result = new LoreCommandResult(true, 0, string.Empty, string.Empty);
+            Assert.AreEqual(string.Empty, result.Warning);
+        }
+
+        [TestMethod]
+        public void CombinedText_IncludesWarningAfterOutputAndError()
+        {
+            var result = new LoreCommandResult(false, 7, "output", "error") { Warning = "warning" };
+            Assert.AreEqual("output" + Environment.NewLine + "error" + Environment.NewLine + "warning", result.CombinedText);
+        }
+
+        [TestMethod]
+        public void Warning_RoundTripsWithSuccessfulResult()
+        {
+            var original = new LoreCommandResult(true, 0, string.Empty, string.Empty) { Warning = "Local history only" };
+
+            LoreCommandResult result = JsonSerializer.Deserialize<LoreCommandResult>(JsonSerializer.Serialize(original))!;
+
+            Assert.IsTrue(result.Success);
+            Assert.AreEqual(0, result.ExitCode);
+            Assert.IsFalse(result.RequiresAuthentication);
+            Assert.AreEqual("Local history only", result.Warning);
+            Assert.AreEqual("Local history only", result.CombinedText);
+        }
+
+        [TestMethod]
+        public void LegacyResultWithoutWarning_DeserializesWithEmptyWarning()
+        {
+            LoreCommandResult result = JsonSerializer.Deserialize<LoreCommandResult>(
+                "{\"Success\":false,\"ExitCode\":12,\"Output\":\"\",\"Error\":\"Sign in\",\"RequiresAuthentication\":true}")!;
+
+            Assert.IsFalse(result.Success);
+            Assert.AreEqual(12, result.ExitCode);
+            Assert.IsTrue(result.RequiresAuthentication);
+            Assert.AreEqual(string.Empty, result.Warning);
+            Assert.AreEqual("Sign in", result.CombinedText);
         }
 
         [TestMethod]

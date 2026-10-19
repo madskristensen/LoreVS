@@ -88,9 +88,9 @@ namespace LoreVS.SourceControl
         /// <summary>
         /// Commits (or amends, when <paramref name="amend"/> is set) only the supplied
         /// <paramref name="paths"/>. The staging area is reset first so the revision contains exactly
-        /// the selected files regardless of what was staged before (equivalent to
-        /// <c>lore unstage</c> + <c>lore stage &lt;paths&gt;</c> + <c>lore commit</c>). Enables partial
-        /// commits from the Lore Changes window.
+        /// the selected files regardless of what was staged before. Resets the staged anchor without
+        /// changing working files, restores selected move provenance, stages selected paths, and
+        /// commits. Refuses an in-progress merge so its staged resolutions are preserved.
         /// </summary>
         Task<LoreCommandResult> CommitFilesAsync(string workingDirectory, string[] paths, LoreMoveEntry[] moves, string message, string identity, bool amend, CancellationToken cancellationToken);
 
@@ -294,7 +294,7 @@ namespace LoreVS.SourceControl
 
     /// <summary>
     /// An exact file move captured by Visual Studio. The package carries this provenance across the
-    /// process boundary because Lore 0.8.x status scans currently downgrade staged moves to add/delete.
+    /// process boundary to preserve rename display and identify moved destinations in partial commits.
     /// </summary>
     public sealed class LoreMoveEntry
     {

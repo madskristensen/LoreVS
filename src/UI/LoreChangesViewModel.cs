@@ -642,6 +642,11 @@ namespace LoreVS.UI
                     await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
                     await VS.MessageBox.ShowErrorAsync("Lore", "Pull (sync) failed:\n\n" + result.CombinedText);
                 }
+                else if (!string.IsNullOrWhiteSpace(result.Warning))
+                {
+                    await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+                    await VS.MessageBox.ShowWarningAsync("Lore", "Pull completed with a warning:\n\n" + result.Warning);
+                }
             });
 
             await RefreshAsync();

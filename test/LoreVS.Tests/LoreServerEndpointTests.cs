@@ -41,13 +41,6 @@ namespace LoreVS.Tests
         }
     
         [TestMethod]
-        public void HealthCheckUrl_UsesHttpPortTwoAbove()
-        {
-            var endpoint = new LoreServerEndpoint("127.0.0.1", 41337);
-            Assert.AreEqual("http://127.0.0.1:41339/health_check", endpoint.HealthCheckUrl);
-        }
-
-        [TestMethod]
         public void TryParse_FullUrl_ExtractsHostAndPort()
         {
             Assert.IsTrue(LoreServerEndpoint.TryParse("lore://host.example:5000/my-repo", out LoreServerEndpoint ep));
@@ -60,6 +53,16 @@ namespace LoreVS.Tests
         {
             Assert.IsTrue(LoreServerEndpoint.TryParse("lore://localhost", out LoreServerEndpoint ep));
             Assert.AreEqual(LoreServerEndpoint.DefaultGrpcPort, ep.GrpcPort);
+        }
+
+        [TestMethod]
+        [DataRow(443)]
+        [DataRow(5000)]
+        [DataRow(65535)]
+        public void TryParse_CustomPort_BuildsRepositoryUrlWithoutHttpPortAssumptions(int port)
+        {
+            Assert.IsTrue(LoreServerEndpoint.TryParse($"lore://host.example:{port}", out LoreServerEndpoint endpoint));
+            Assert.AreEqual($"lore://host.example:{port}/repo", endpoint.RepositoryUrl("repo"));
         }
 
         [TestMethod]

@@ -17,7 +17,7 @@ namespace LoreVS.SourceControl
         /// <summary>True when the command ran and exited with code 0.</summary>
         public bool Success { get; }
 
-        /// <summary>Process exit code (-1 when the CLI could not be launched or timed out).</summary>
+        /// <summary>Lore SDK status code (-1 for a worker, transport, or timeout failure).</summary>
         public int ExitCode { get; }
 
         /// <summary>Captured standard output.</summary>
@@ -34,7 +34,10 @@ namespace LoreVS.SourceControl
         /// </summary>
         public bool RequiresAuthentication { get; set; }
 
-        /// <summary>Combined stdout/stderr, trimmed, for display in the output window.</summary>
+        /// <summary>A non-fatal warning, such as sync falling back to local history.</summary>
+        public string Warning { get; set; } = string.Empty;
+
+        /// <summary>Combined output, error, and warning, trimmed, for the output window.</summary>
         public string CombinedText
         {
             get
@@ -43,6 +46,11 @@ namespace LoreVS.SourceControl
                 if (!string.IsNullOrWhiteSpace(Error))
                 {
                     text = string.IsNullOrWhiteSpace(text) ? Error : text + System.Environment.NewLine + Error;
+                }
+
+                if (!string.IsNullOrWhiteSpace(Warning))
+                {
+                    text = string.IsNullOrWhiteSpace(text) ? Warning : text + System.Environment.NewLine + Warning;
                 }
 
                 return (text ?? string.Empty).Trim();
