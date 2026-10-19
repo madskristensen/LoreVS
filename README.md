@@ -113,6 +113,12 @@ When more revisions are available, a **Load more** button appends the next page.
 - Select a revision to load the files it changed (relative to its direct parent).
   File details are fetched only for the revision you select, not for the whole
   list.
+- Ctrl+click two revisions to compare their complete snapshots, including
+  nonadjacent revisions. The older revision is always the left side, regardless
+  of selection order. Double-click a result to open the native Visual Studio
+  diff viewer. Added and deleted files compare against an empty side; renamed
+  files use their original path on the left. Historical read failures are
+  reported rather than silently opening your working copy.
 - Double-click a changed file to diff that revision against its direct parent in
   the native Visual Studio diff viewer. Added files open on their own, deleted
   files show their last content from the parent, and a root revision (which has
