@@ -48,6 +48,17 @@ namespace LoreVS
         public const int LoreHistoryToolbar = 0x000B;
         public const int LoreHistoryToolbarGroup = 0x000C;
         public const int RefreshHistoryCommand = 0x0110;
+        public const int LockCommand = 0x0111;
+        public const int UnlockCommand = 0x0112;
+        public const int OpenChangeDiffCommand = 0x0113;
+        public const int OpenChangeFileCommand = 0x0114;
+        public const int DiscardChangeCommand = 0x0115;
+        public const int LoreChangesContextMenu = 0x2000;
+        public const int LoreChangesFileActionsGroup = 0x2001;
+        public const int LoreChangesDiscardGroup = 0x2002;
+        public const int LoreChangesLockGroup = 0x2003;
+        public const int LoreChangesLockSubMenu = 0x2004;
+        public const int LoreChangesLockActionsGroup = 0x2005;
         public const int idmWSE_ContextMenu = 0x0002;
     }
 }

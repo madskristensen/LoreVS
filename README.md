@@ -97,6 +97,31 @@ If Pull falls back to local history because no remote is configured or the remot
 branch cannot be queried, the extension displays a warning and records it in the
 Output window. Local synchronization does not mean remote changes were fetched.
 
+## Lock non-mergeable files
+
+In Solution Explorer, right-click one or more files and choose **Lore > Lock**
+before editing binary assets. Choose **Lore > Unlock** when you are finished.
+Files must belong to the same repository and already exist in the committed or
+staged snapshot. Locking does not stage, commit, or change file contents.
+
+The **Lore Changes** window offers the same commands on a changed file and in
+its **Locks** list. The list shows all locks on the current branch, including
+unchanged files, with the server-reported owner. Changed rows display the owner
+alongside their normal M/A/D/R/C status; unchanged locked files are never added
+to the commit selection. Lock/Unlock targets the right-clicked file, independent
+of the checkboxes used for committing. The native context menu also supports
+the Menu key and Shift+F10.
+
+Locks are refreshed on workspace/branch changes, explicit **Refresh**, and after
+Lock/Unlock. Document saves reuse the last lock result instead of requiring a
+server round trip for every edit. Lock status
+requires a reachable remote; failures are shown as **Lock status unavailable**,
+not as an empty successful query. Lock/Unlock uses the existing sign-in flow
+when the server requests authentication. Ownership comes from the authenticated
+server session, not the commit-author identity setting. The extension does not
+request force release or supply an alternate owner; server permissions still
+govern whether a lock can be released. Locks are scoped to a branch.
+
 ## Browse revision history
 
 Choose **Lore > View History...** to open the **Lore History** tool window - a
@@ -196,6 +221,11 @@ commit, push, pull, revision hashes, and file contents in both directions. The
 tests cover an HTTP endpoint on an independent port and HTTP disabled entirely,
 uncached history and historical diffs, then stop the server and verify that a
 connection timeout reports failure without requesting sign-in or altering files.
+They also verify branch-scoped acquire/query/status/release across two working
+copies, repeated acquisition, multiple files, rejected requests, and lock-query
+failure when the server is stopped. The unauthenticated local server uses a
+shared anonymous lock owner, so cross-user contention and unauthorized release
+require an authenticated server and are not claimed by these tests.
 
 Build the solution first. Download and extract the Windows x64
 [Lore server 0.10.1 release](https://github.com/EpicGames/lore/releases/tag/v0.10.1),

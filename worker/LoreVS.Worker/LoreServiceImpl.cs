@@ -23,7 +23,7 @@ namespace LoreVS.Worker
     /// is translated into a non-successful <see cref="LoreCommandResult"/> rather than propagated,
     /// so the package surface stays identical to the old CLI client.
     /// </summary>
-    internal sealed class LoreServiceImpl : ILoreWorkerContract
+    internal sealed partial class LoreServiceImpl : ILoreWorkerContract
     {
         // Upper bound on any single native SDK operation. The native calls drive their own runtime
         // and block synchronously; if one stalls (for example a revision lookup that blocks on a

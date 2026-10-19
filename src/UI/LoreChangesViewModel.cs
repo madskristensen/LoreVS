@@ -43,6 +43,10 @@ namespace LoreVS.UI
         private string _statusText = string.Empty;
         private List<LoreTreeNode> _treeRoots = new List<LoreTreeNode>();
         private int _selectedFileCount;
+        private string _lockStatusText = "Lock status has not been queried.";
+        private bool _refreshLockStatus = true;
+        private string _locksRoot = string.Empty;
+        private string _locksBranch = string.Empty;
 
         /// <summary>
         /// Absolute paths of files the user has explicitly unchecked (excluded from the next commit).
@@ -66,6 +70,14 @@ namespace LoreVS.UI
 
         /// <summary>The changed files currently displayed.</summary>
         public ObservableCollection<LoreChangeItem> Changes { get; }
+
+        public ObservableCollection<LoreFileLock> Locks { get; } = new ObservableCollection<LoreFileLock>();
+
+        public string LockStatusText
+        {
+            get => _lockStatusText;
+            private set => SetProperty(ref _lockStatusText, value);
+        }
 
         /// <summary>
         /// The changed files arranged as a flattened folder tree (folders back to the repository
@@ -274,6 +286,7 @@ namespace LoreVS.UI
         public async Task ReloadAsync()
         {
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+            InvalidateLocks();
 
             string? solutionDir = await ResolveSolutionDirectoryAsync();
             ILoreClient client = _client!;
@@ -286,6 +299,8 @@ namespace LoreVS.UI
             if (!HasRepository)
             {
                 Changes.Clear();
+                Locks.Clear();
+                LockStatusText = "Lock status has not been queried.";
                 _treeRoots = new List<LoreTreeNode>();
                 Nodes.Clear();
                 _excludedPaths.Clear();
@@ -349,6 +364,24 @@ namespace LoreVS.UI
             }
         }
 
+        public async Task RefreshLocksAsync()
+        {
+            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+            InvalidateLocks();
+            await RefreshAsync();
+        }
+
+        internal void InvalidateLocks() => _refreshLockStatus = true;
+
+        internal bool BeginLockRefresh(string root, string branch)
+        {
+            bool refresh = _refreshLockStatus ||
+                !string.Equals(root, _locksRoot, StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(branch, _locksBranch, StringComparison.Ordinal);
+            _refreshLockStatus = false;
+            return refresh;
+        }
+
         private async Task RefreshCoreAsync()
         {
             if (!HasRepository || _client == null)
@@ -367,14 +400,33 @@ namespace LoreVS.UI
                 // underlying RPC is time-bounded so a revision lookup that blocks on a remote cannot
                 // freeze the window.
                 LoreRepositorySnapshot snapshot = await GetSnapshotAsync(client, root);
+                string branch = snapshot.Info?.BranchName ?? string.Empty;
+                bool refreshLocks = BeginLockRefresh(root, branch);
+                LoreLockQueryResult? locks = null;
+                if (refreshLocks)
+                {
+                    locks = string.IsNullOrEmpty(branch)
+                        ? new LoreLockQueryResult { Result = LoreCommandResult.Failed("The current branch could not be determined.") }
+                        : snapshot.Info!.HasRemote ? await Task.Run(() => client.QueryLocks(root, branch)) : null;
+                    if (locks != null && !locks.Result.Success)
+                    {
+                        await LoreLog.WriteCommandAsync("lock query", locks.Result.CombinedText);
+                    }
+                }
 
                 await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
 
+                if (!string.Equals(root, _repositoryRoot, StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
+
                 Changes.Clear();
-                IEnumerable<LoreChangeItem> items = (snapshot?.Files ?? Array.Empty<LoreStatusEntry>())
-                    .Where(e => !string.IsNullOrEmpty(e.Path) && IsChange(e.Status))
-                    .Select(e => new LoreChangeItem(e.Path, root, e.Status, e.OriginalPath))
-                    .OrderBy(i => i.RelativePath, StringComparer.OrdinalIgnoreCase);
+                if (refreshLocks)
+                {
+                    ApplyLocks(locks, root, branch);
+                }
+                IEnumerable<LoreChangeItem> items = BuildChangeItems(root, snapshot.Files, Locks);
 
                 foreach (LoreChangeItem item in items)
                 {
@@ -395,6 +447,36 @@ namespace LoreVS.UI
 
             // Warm the branch cache (off the critical path) so the toolbar dropdown opens instantly.
             await RefreshBranchCacheAsync();
+        }
+
+        internal void ApplyLocks(LoreLockQueryResult? result, string root, string branch)
+        {
+            _locksRoot = root;
+            _locksBranch = branch;
+            Locks.Clear();
+            if (result?.Result.Success == true)
+            {
+                foreach (LoreFileLock fileLock in result.Locks.OrderBy(item => item.Path, StringComparer.OrdinalIgnoreCase))
+                {
+                    Locks.Add(fileLock);
+                }
+                LockStatusText = Locks.Count + " locked file(s) on the current branch.";
+            }
+            else
+            {
+                LockStatusText = result == null ? "Locks require a remote repository."
+                    : "Lock status unavailable: " + result.Result.CombinedText;
+            }
+        }
+
+        internal static IEnumerable<LoreChangeItem> BuildChangeItems(string root, IEnumerable<LoreStatusEntry> files, IEnumerable<LoreFileLock> locks)
+        {
+            var byPath = locks.GroupBy(item => item.Path, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(group => group.Key, group => group.First().Owner, StringComparer.OrdinalIgnoreCase);
+            return files.Where(entry => !string.IsNullOrEmpty(entry.Path) && IsChange(entry.Status))
+                .Select(entry => new LoreChangeItem(entry.Path, root, entry.Status, entry.OriginalPath,
+                    byPath.TryGetValue(entry.Path, out string owner) ? owner : null))
+                .OrderBy(item => item.RelativePath, StringComparer.OrdinalIgnoreCase);
         }
 
         /// <summary>True when there is at least one changed file.</summary>

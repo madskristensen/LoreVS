@@ -179,6 +179,11 @@ namespace LoreVS.SourceControl
 
         /// <summary>Returns file differences from source to target, fetching uncached data as needed.</summary>
         Task<LoreRevisionComparison> CompareRevisionsAsync(string repositoryRoot, string sourceRevision, string targetRevision, CancellationToken cancellationToken);
+
+        Task<LoreCommandResult> AcquireLockAsync(string repositoryRoot, string[] paths, CancellationToken cancellationToken);
+        Task<LoreCommandResult> ReleaseLockAsync(string repositoryRoot, string[] paths, CancellationToken cancellationToken);
+        Task<LoreLockQueryResult> QueryLocksAsync(string repositoryRoot, string branch, CancellationToken cancellationToken);
+        Task<LoreLockQueryResult> LockStatusAsync(string repositoryRoot, string[] paths, CancellationToken cancellationToken);
     }
 
     /// <summary>
@@ -398,5 +403,20 @@ namespace LoreVS.SourceControl
         public LoreCommandResult Result { get; set; } = LoreCommandResult.Failed("The revision comparison did not complete.");
 
         public LoreRevisionChange[] Changes { get; set; } = System.Array.Empty<LoreRevisionChange>();
+    }
+
+    public sealed class LoreFileLock
+    {
+        public string Path { get; set; } = string.Empty;
+        public string Owner { get; set; } = string.Empty;
+        public string BranchId { get; set; } = string.Empty;
+        public ulong LockedAt { get; set; }
+        public string DisplayText => Path + " - locked by " + (string.IsNullOrEmpty(Owner) ? "(unknown owner)" : Owner);
+    }
+
+    public sealed class LoreLockQueryResult
+    {
+        public LoreCommandResult Result { get; set; } = LoreCommandResult.Failed("Lock status has not been queried.");
+        public LoreFileLock[] Locks { get; set; } = System.Array.Empty<LoreFileLock>();
     }
 }

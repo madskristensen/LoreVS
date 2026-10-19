@@ -8,7 +8,10 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using Community.VisualStudio.Toolkit;
+using LoreVS.SourceControl;
+using Microsoft.VisualStudio;
 using Microsoft.VisualStudio.Shell;
+using Microsoft.VisualStudio.Shell.Interop;
 using Microsoft.VisualStudio.Threading;
 
 namespace LoreVS.UI
@@ -21,6 +24,13 @@ namespace LoreVS.UI
     {
         /// <summary>The control currently hosted in the tool window, used by the toolbar commands.</summary>
         internal static LoreChangesControl? Current { get; private set; }
+
+        internal static LoreChangesControl? ContextMenuOwner { get; private set; }
+        internal LoreChangeItem? ContextFile { get; private set; }
+        internal string[] ContextPaths { get; private set; } = System.Array.Empty<string>();
+        internal IReadOnlyList<LoreChangeItem> ContextDiscardItems { get; private set; } = System.Array.Empty<LoreChangeItem>();
+        private LoreTreeNode? _contextNode;
+        private LoreFileLock? _contextLock;
 
         // The TreeView is bound to the repository-root nodes; their Children carry the full subtree so
         // the control renders the hierarchy natively. The view model still exposes a flattened Nodes
@@ -38,11 +48,6 @@ namespace LoreVS.UI
             ChangesTree.ItemsSource = _rootNodes;
             viewModel.Nodes.CollectionChanged += OnNodesChanged;
             SyncRootNodes();
-
-            // Fully theme the row context menu against VS environment colors. The toolkit's
-            // UseVsTheme only recolors a few brushes and leaves the icon gutter, hover, and border
-            // looking like a plain WPF menu, so re-template it the same way the branch menu is themed.
-            ThemedContextMenuHelper.ApplyVsTheme(ChangesContextMenu);
 
             viewModel.PropertyChanged += OnViewModelPropertyChanged;
             UpdateRepositoryVisibility();
@@ -234,6 +239,8 @@ namespace LoreVS.UI
         // before the context menu opens to keep the menu actions targeting the clicked row.
         private void OnTreeRightButtonDown(object sender, MouseButtonEventArgs e)
         {
+            _contextNode = null;
+            _contextLock = null;
             DependencyObject? source = e.OriginalSource as DependencyObject;
             while (source != null && !(source is TreeViewItem))
             {
@@ -243,49 +250,72 @@ namespace LoreVS.UI
             if (source is TreeViewItem item)
             {
                 item.IsSelected = true;
+                item.Focus();
+                _contextNode = item.DataContext as LoreTreeNode;
             }
         }
 
-        // "Open Diff" only makes sense for file leaves; hide it for folder rows and empty space
-        // since the context menu is shared across every row in the tree.
-        private void OnContextMenuOpening(object sender, ContextMenuEventArgs e)
+        private void OnLockRightButtonDown(object sender, MouseButtonEventArgs e)
         {
-            bool isFile = ChangesTree.SelectedItem is LoreTreeNode node && node.File != null;
-            OpenDiffMenuItem.Visibility = isFile ? Visibility.Visible : Visibility.Collapsed;
-        }
-
-        private void OnOpenDiffMenu(object sender, RoutedEventArgs e)
-        {
-            if (ChangesTree.SelectedItem is LoreTreeNode node && node.File != null)
+            _contextNode = null;
+            _contextLock = null;
+            DependencyObject? source = e.OriginalSource as DependencyObject;
+            while (source != null && !(source is ListBoxItem))
             {
-                Run(() => ViewModel.ShowDiffAsync(node.File));
+                source = VisualTreeHelper.GetParent(source);
+            }
+            if (source is ListBoxItem item)
+            {
+                item.IsSelected = true;
+                item.Focus();
+                _contextLock = item.DataContext as LoreFileLock;
             }
         }
 
-        private void OnOpenFileMenu(object sender, RoutedEventArgs e)
+        private void OnContextRightButtonUp(object sender, MouseButtonEventArgs e)
         {
-            if (ChangesTree.SelectedItem is LoreTreeNode node && node.File != null)
+            Point point = PointToScreen(e.GetPosition(this));
+            Run(() => ShowContextMenuAsync(point));
+            e.Handled = true;
+        }
+
+        private void OnContextKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Apps || (e.Key == Key.F10 && Keyboard.Modifiers == ModifierKeys.Shift))
             {
-                Run(() => VS.Documents.OpenAsync(node.File.FullPath));
+                _contextNode = sender == ChangesTree ? ChangesTree.SelectedItem as LoreTreeNode : null;
+                _contextLock = sender == LockedFilesList ? LockedFilesList.SelectedItem as LoreFileLock : null;
+                var element = Keyboard.FocusedElement as FrameworkElement ?? (FrameworkElement)sender;
+                Point point = element.PointToScreen(new Point(0, element.ActualHeight));
+                Run(() => ShowContextMenuAsync(point));
+                e.Handled = true;
             }
         }
 
-        private void OnDiscardMenu(object sender, RoutedEventArgs e)
+        private async System.Threading.Tasks.Task ShowContextMenuAsync(Point point)
         {
-            // Discard operates on the checked files (the multi-select model after the TreeView switch),
-            // falling back to the selected row's files when nothing is checked.
-            IReadOnlyList<LoreChangeItem> items = GetCheckedFiles();
-            if (items.Count == 0 && ChangesTree.SelectedItem is LoreTreeNode node)
+            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+            ContextFile = _contextNode?.File;
+            ContextPaths = ContextFile != null ? new[] { ContextFile.FullPath }
+                : _contextLock != null ? new[] { _contextLock.Path } : System.Array.Empty<string>();
+            ContextDiscardItems = _contextLock == null ? GetCheckedFiles() : System.Array.Empty<LoreChangeItem>();
+            if (ContextDiscardItems.Count == 0 && _contextNode != null)
             {
-                items = node.EnumerateFileLeaves()
-                    .Where(n => n.File != null)
-                    .Select(n => n.File!)
-                    .ToList();
+                ContextDiscardItems = _contextNode.EnumerateFileLeaves().Select(node => node.File!).ToArray();
             }
-
-            if (items.Count > 0)
+            IVsUIShell shell = await VS.GetRequiredServiceAsync<SVsUIShell, IVsUIShell>();
+            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+            ContextMenuOwner = this;
+            try
             {
-                Run(() => ViewModel.DiscardAsync(items));
+                ErrorHandler.ThrowOnFailure(shell.UpdateCommandUI(1));
+                System.Guid guid = PackageGuids.LoreVS;
+                var points = new[] { new POINTS { x = (short)point.X, y = (short)point.Y } };
+                ErrorHandler.ThrowOnFailure(shell.ShowContextMenu(0, ref guid, PackageIds.LoreChangesContextMenu, points, null));
+            }
+            finally
+            {
+                ContextMenuOwner = null;
             }
         }
 

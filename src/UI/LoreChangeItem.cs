@@ -10,10 +10,11 @@ namespace LoreVS.UI
     /// </summary>
     public sealed class LoreChangeItem
     {
-        public LoreChangeItem(string fullPath, string repositoryRoot, LoreFileStatus status, string? originalPath = null)
+        public LoreChangeItem(string fullPath, string repositoryRoot, LoreFileStatus status, string? originalPath = null, string? lockOwner = null)
         {
             FullPath = fullPath;
             Status = status;
+            LockOwner = lockOwner;
             RelativePath = MakeRelative(repositoryRoot, fullPath);
             FileName = Path.GetFileName(fullPath);
 
@@ -40,6 +41,10 @@ namespace LoreVS.UI
 
         /// <summary>The normalized Lore status.</summary>
         public LoreFileStatus Status { get; }
+
+        public string? LockOwner { get; }
+        public bool IsLocked => LockOwner != null;
+        public string LockText => IsLocked ? "Locked: " + (string.IsNullOrEmpty(LockOwner) ? "(unknown owner)" : LockOwner) : string.Empty;
 
         /// <summary>
         /// For a renamed/moved file, the absolute path it was moved from; otherwise

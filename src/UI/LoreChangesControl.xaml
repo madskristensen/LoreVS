@@ -218,6 +218,16 @@
             <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusText}"
                        Margin="0,8,0,0" Opacity="0.8" TextTrimming="CharacterEllipsis" />
 
+            <StackPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
+                <TextBlock FontWeight="Bold" Text="Locks" />
+                <TextBlock Text="{Binding LockStatusText}" ToolTip="{Binding LockStatusText}"
+                           TextTrimming="CharacterEllipsis" Margin="0,4" />
+                <ListBox x:Name="LockedFilesList" ItemsSource="{Binding Locks}" DisplayMemberPath="DisplayText"
+                         MaxHeight="110" BorderThickness="0"
+                         PreviewMouseRightButtonDown="OnLockRightButtonDown"
+                         PreviewMouseRightButtonUp="OnContextRightButtonUp" PreviewKeyDown="OnContextKeyDown" />
+            </StackPanel>
+
             <!-- Changes header with a master select-all checkbox -->
             <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,8,0,6">
                 <CheckBox x:Name="SelectAllCheck"
@@ -244,27 +254,8 @@
                       ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                       MouseDoubleClick="OnChangeDoubleClick"
                       PreviewMouseRightButtonDown="OnTreeRightButtonDown"
-                      ContextMenuOpening="OnContextMenuOpening">
-                <TreeView.ContextMenu>
-                    <ContextMenu x:Name="ChangesContextMenu">
-                        <MenuItem x:Name="OpenDiffMenuItem" Header="Open Diff" Click="OnOpenDiffMenu">
-                            <MenuItem.Icon>
-                                <imaging:CrispImage Width="16" Height="16" Moniker="{x:Static catalog:KnownMonikers.CompareFiles}" />
-                            </MenuItem.Icon>
-                        </MenuItem>
-                        <MenuItem Header="Open File" Click="OnOpenFileMenu">
-                            <MenuItem.Icon>
-                                <imaging:CrispImage Width="16" Height="16" Moniker="{x:Static catalog:KnownMonikers.Open}" />
-                            </MenuItem.Icon>
-                        </MenuItem>
-                        <Separator />
-                        <MenuItem Header="Discard Changes..." Click="OnDiscardMenu">
-                            <MenuItem.Icon>
-                                <imaging:CrispImage Width="16" Height="16" Moniker="{x:Static catalog:KnownMonikers.Undo}" />
-                            </MenuItem.Icon>
-                        </MenuItem>
-                    </ContextMenu>
-                </TreeView.ContextMenu>
+                      PreviewMouseRightButtonUp="OnContextRightButtonUp"
+                      PreviewKeyDown="OnContextKeyDown">
                 <TreeView.ItemTemplate>
                     <HierarchicalDataTemplate ItemsSource="{Binding Children}">
                         <Grid Background="Transparent" ToolTip="{Binding RowToolTip}">
@@ -308,10 +299,10 @@
                                 <imaging:CrispImage Moniker="{x:Static catalog:KnownMonikers.Undo}"
                                                     Width="16" Height="16" />
                             </Button>
-                            <TextBlock Grid.Column="4" Text="{Binding StatusBadge}"
-                                       HorizontalAlignment="Right"
-                                       VerticalAlignment="Center" Margin="8,0,6,0"
-                                       ToolTip="{Binding StatusText}" />
+                            <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding File.LockText}" Margin="8,0,0,0" />
+                                <TextBlock Text="{Binding StatusBadge}" Margin="8,0,6,0" ToolTip="{Binding StatusText}" />
+                            </StackPanel>
                         </Grid>
                     </HierarchicalDataTemplate>
                 </TreeView.ItemTemplate>

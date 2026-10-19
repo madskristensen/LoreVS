@@ -602,6 +602,38 @@ namespace LoreVS.SourceControl
             }
         }
 
+        /// <inheritdoc/>
+        public LoreCommandResult AcquireLock(string repositoryRoot, string[] paths) =>
+            Invoke((proxy, ct) => proxy.AcquireLockAsync(repositoryRoot, paths, ct));
+
+        public LoreCommandResult ReleaseLock(string repositoryRoot, string[] paths) =>
+            Invoke((proxy, ct) => proxy.ReleaseLockAsync(repositoryRoot, paths, ct));
+
+        public LoreLockQueryResult QueryLocks(string repositoryRoot, string branch) =>
+            InvokeLockQuery((proxy, ct) => proxy.QueryLocksAsync(repositoryRoot, branch, ct));
+
+        public LoreLockQueryResult LockStatus(string repositoryRoot, string[] paths) =>
+            InvokeLockQuery((proxy, ct) => proxy.LockStatusAsync(repositoryRoot, paths, ct));
+
+        private LoreLockQueryResult InvokeLockQuery(Func<ILoreWorkerContract, CancellationToken, Task<LoreLockQueryResult>> operation)
+        {
+            ILoreWorkerContract? proxy = GetProxy();
+            if (proxy == null)
+            {
+                return new LoreLockQueryResult { Result = WorkerUnavailable() };
+            }
+
+            try
+            {
+                return Run(ct => operation(proxy, ct));
+            }
+            catch (Exception ex)
+            {
+                HandleCallFailure(ex);
+                return new LoreLockQueryResult { Result = LoreCommandResult.Failed(ex.Message) };
+            }
+        }
+
         /// <summary>Clears any cached status so the next query re-runs against the worker.</summary>
         public void InvalidateCache() => _cache.Clear();
 

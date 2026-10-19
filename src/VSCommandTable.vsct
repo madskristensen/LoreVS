@@ -8,6 +8,13 @@
 
   <Commands package="LoreVS">
     <Menus>
+      <Menu guid="LoreVS" id="LoreChangesContextMenu" type="Context">
+        <Strings><CommandName>Lore Changes</CommandName></Strings>
+      </Menu>
+      <Menu guid="LoreVS" id="LoreChangesLockSubMenu" priority="0x0100" type="Menu">
+        <Parent guid="LoreVS" id="LoreChangesLockGroup"/>
+        <Strings><ButtonText>Lore</ButtonText></Strings>
+      </Menu>
       <!-- The "Lore" flyout submenu, hosted on the solution node and Open Folder root
            context menus (mirrors how the built-in Git support nests its commands). -->
       <Menu guid="LoreVS" id="LoreSubMenu" priority="0x0600" type="Menu">
@@ -40,6 +47,18 @@
     </Menus>
 
     <Groups>
+      <Group guid="LoreVS" id="LoreChangesFileActionsGroup" priority="0x0100">
+        <Parent guid="LoreVS" id="LoreChangesContextMenu"/>
+      </Group>
+      <Group guid="LoreVS" id="LoreChangesDiscardGroup" priority="0x0200">
+        <Parent guid="LoreVS" id="LoreChangesContextMenu"/>
+      </Group>
+      <Group guid="LoreVS" id="LoreChangesLockGroup" priority="0x0300">
+        <Parent guid="LoreVS" id="LoreChangesContextMenu"/>
+      </Group>
+      <Group guid="LoreVS" id="LoreChangesLockActionsGroup" priority="0x0100">
+        <Parent guid="LoreVS" id="LoreChangesLockSubMenu"/>
+      </Group>
       <!-- Anchor group placed on each host context menu; carries the Lore submenu. -->
       <Group guid="LoreVS" id="LoreContextGroup" priority="0x0600">
         <Parent guid="guidSHLMainMenu" id="IDM_VS_CTXT_SOLNNODE"/>
@@ -77,6 +96,38 @@
     <!--This section defines the elements the user can interact with, like a menu command or a button
         or combo box in a toolbar. -->
     <Buttons>
+      <Button guid="LoreVS" id="LockCommand" priority="0x0130" type="Button">
+        <Parent guid="LoreVS" id="LoreFileGroup"/>
+        <Icon guid="ImageCatalogGuid" id="Lock"/>
+        <CommandFlag>IconIsMoniker</CommandFlag>
+        <CommandFlag>DynamicVisibility</CommandFlag>
+        <Strings><ButtonText>Lock</ButtonText><LocCanonicalName>.LoreVS.Lock</LocCanonicalName></Strings>
+      </Button>
+      <Button guid="LoreVS" id="UnlockCommand" priority="0x0140" type="Button">
+        <Parent guid="LoreVS" id="LoreFileGroup"/>
+        <Icon guid="ImageCatalogGuid" id="Unlock"/>
+        <CommandFlag>IconIsMoniker</CommandFlag>
+        <CommandFlag>DynamicVisibility</CommandFlag>
+        <Strings><ButtonText>Unlock</ButtonText><LocCanonicalName>.LoreVS.Unlock</LocCanonicalName></Strings>
+      </Button>
+      <Button guid="LoreVS" id="OpenChangeDiffCommand" priority="0x0100" type="Button">
+        <Parent guid="LoreVS" id="LoreChangesFileActionsGroup"/>
+        <Icon guid="ImageCatalogGuid" id="CompareFiles"/>
+        <CommandFlag>IconIsMoniker</CommandFlag><CommandFlag>DynamicVisibility</CommandFlag>
+        <Strings><ButtonText>Open Diff</ButtonText></Strings>
+      </Button>
+      <Button guid="LoreVS" id="OpenChangeFileCommand" priority="0x0200" type="Button">
+        <Parent guid="LoreVS" id="LoreChangesFileActionsGroup"/>
+        <Icon guid="ImageCatalogGuid" id="Open"/>
+        <CommandFlag>IconIsMoniker</CommandFlag>
+        <Strings><ButtonText>Open File</ButtonText></Strings>
+      </Button>
+      <Button guid="LoreVS" id="DiscardChangeCommand" priority="0x0100" type="Button">
+        <Parent guid="LoreVS" id="LoreChangesDiscardGroup"/>
+        <Icon guid="ImageCatalogGuid" id="Undo"/>
+        <CommandFlag>IconIsMoniker</CommandFlag>
+        <Strings><ButtonText>Discard Changes...</ButtonText></Strings>
+      </Button>
       <!-- Onboarding entry point. Invoked programmatically by the publish workflow
            (IVsSccPublish.BeginPublishWorkflowAsync), so it is kept out of the context menu
            via DefaultInvisible while remaining routable by command id. -->
@@ -214,6 +265,8 @@
        open solution is not under Lore source control. When every command hosted by the "Lore"
        flyout is hidden, Visual Studio hides the (now empty) flyout automatically. -->
   <VisibilityConstraints>
+    <VisibilityItem guid="LoreVS" id="LockCommand" context="guidLoreUiContext" />
+    <VisibilityItem guid="LoreVS" id="UnlockCommand" context="guidLoreUiContext" />
     <VisibilityItem guid="LoreVS" id="CommitToLoreCommand" context="guidLoreUiContext" />
     <VisibilityItem guid="LoreVS" id="IgnoreAndUntrackCommand" context="guidLoreUiContext" />
     <VisibilityItem guid="LoreVS" id="UndoChangesCommand" context="guidLoreUiContext" />
@@ -221,6 +274,12 @@
     <VisibilityItem guid="LoreVS" id="ShowHistoryCommand" context="guidLoreUiContext" />
   </VisibilityConstraints>
   <CommandPlacements>
+    <CommandPlacement guid="LoreVS" id="LockCommand" priority="0x0100">
+      <Parent guid="LoreVS" id="LoreChangesLockActionsGroup"/>
+    </CommandPlacement>
+    <CommandPlacement guid="LoreVS" id="UnlockCommand" priority="0x0200">
+      <Parent guid="LoreVS" id="LoreChangesLockActionsGroup"/>
+    </CommandPlacement>
     <!-- Reuse the same anchor group (and therefore the Lore submenu) on the Open Folder
          root via the Workspace Explorer context menu (a different command set than the
          in-project folder node). -->
@@ -262,6 +321,17 @@
       <IDSymbol name="LoreHistoryToolbar" value="0x000B" />
       <IDSymbol name="LoreHistoryToolbarGroup" value="0x000C" />
       <IDSymbol name="RefreshHistoryCommand" value="0x0110" />
+      <IDSymbol name="LockCommand" value="0x0111" />
+      <IDSymbol name="UnlockCommand" value="0x0112" />
+      <IDSymbol name="OpenChangeDiffCommand" value="0x0113" />
+      <IDSymbol name="OpenChangeFileCommand" value="0x0114" />
+      <IDSymbol name="DiscardChangeCommand" value="0x0115" />
+      <IDSymbol name="LoreChangesContextMenu" value="0x2000" />
+      <IDSymbol name="LoreChangesFileActionsGroup" value="0x2001" />
+      <IDSymbol name="LoreChangesDiscardGroup" value="0x2002" />
+      <IDSymbol name="LoreChangesLockGroup" value="0x2003" />
+      <IDSymbol name="LoreChangesLockSubMenu" value="0x2004" />
+      <IDSymbol name="LoreChangesLockActionsGroup" value="0x2005" />
     </GuidSymbol>
 
     <!-- Workspace Explorer (Open Folder) context menu. -->

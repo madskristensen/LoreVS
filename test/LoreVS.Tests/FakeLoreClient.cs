@@ -83,5 +83,9 @@ namespace LoreVS.Tests
 
         public LoreRevisionComparison CompareRevisions(string repositoryRoot, string sourceRevision, string targetRevision) =>
             CompareRevisionsHandler != null ? CompareRevisionsHandler(repositoryRoot, sourceRevision, targetRevision) : throw new NotImplementedException();
+        public LoreCommandResult AcquireLock(string repositoryRoot, string[] paths) => throw new NotImplementedException();
+        public LoreCommandResult ReleaseLock(string repositoryRoot, string[] paths) => throw new NotImplementedException();
+        public LoreLockQueryResult QueryLocks(string repositoryRoot, string branch) => throw new NotImplementedException();
+        public LoreLockQueryResult LockStatus(string repositoryRoot, string[] paths) => throw new NotImplementedException();
     }
 }

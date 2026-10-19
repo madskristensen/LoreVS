@@ -176,5 +176,17 @@ namespace LoreVS.SourceControl
         /// <summary>Compares two committed revisions without changing the working tree.</summary>
         LoreRevisionComparison CompareRevisions(string repositoryRoot, string sourceRevision, string targetRevision);
 
+        /// <summary>Acquires locks for files on the current branch using the server session.</summary>
+        LoreCommandResult AcquireLock(string repositoryRoot, string[] paths);
+
+        /// <summary>Releases locks without requesting force or an alternate owner.</summary>
+        LoreCommandResult ReleaseLock(string repositoryRoot, string[] paths);
+
+        /// <summary>Queries server locks, optionally restricted to a branch.</summary>
+        LoreLockQueryResult QueryLocks(string repositoryRoot, string branch);
+
+        /// <summary>Checks the server lock status of selected files on the current branch.</summary>
+        LoreLockQueryResult LockStatus(string repositoryRoot, string[] paths);
+
     }
 }
