@@ -56,7 +56,20 @@ jobs:
     - name: Build
       run: msbuild ${{ env.Solution }} /v:m /m /p:Configuration=${{ env.Configuration }} /p:DeployExtension=${{ env.DeployExtension }}
 
+    - name: Download local integration-test server
+      shell: pwsh
+      run: |
+        $archive = Join-Path $env:RUNNER_TEMP 'loreserver.zip'
+        Invoke-WebRequest 'https://github.com/EpicGames/lore/releases/download/v0.10.1/loreserver-v0.10.1-x86_64-pc-windows-msvc.zip' -OutFile $archive
+        if ((Get-FileHash $archive -Algorithm SHA256).Hash -ne '67A987FFC2CD26D0E188D7EE2174BF4496AC8C6A4CC3D857F7629933841DCF11') {
+          throw 'The Lore server archive did not match its pinned SHA-256 hash.'
+        }
+        Expand-Archive $archive -DestinationPath (Join-Path $env:RUNNER_TEMP 'lore-server')
+
     - name: Run tests
+      timeout-minutes: 10
+      env:
+        LOREVS_TEST_SERVER_PATH: ${{ runner.temp }}\lore-server\loreserver.exe
       run: dotnet test ${{ env.Solution }} --configuration ${{ env.Configuration }} --no-build --no-restore --verbosity normal --logger:"trx;LogFileName=test-results.trx"
 
     - name: Report test results

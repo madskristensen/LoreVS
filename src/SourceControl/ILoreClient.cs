@@ -154,7 +154,7 @@ namespace LoreVS.SourceControl
         /// <summary>
         /// Writes the content of <paramref name="relativePath"/> as it exists at
         /// <paramref name="revision"/> (empty for the current revision) to <paramref name="outputPath"/>.
-        /// Used to materialize the committed version of a file for diffing.
+        /// May fetch uncached content from the remote. Used to materialize the committed version of a file for diffing.
         /// </summary>
         LoreCommandResult WriteFileAtRevision(string workingDirectory, string relativePath, string revision, string outputPath);
         /// <summary>
@@ -162,14 +162,14 @@ namespace LoreVS.SourceControl
         /// <paramref name="repositoryRoot"/>, newest first. Pass an empty
         /// <paramref name="startAfterRevision"/> for the first page, or the hash of the last revision
         /// already shown to continue paging (that revision is excluded). Returns an empty page when the
-        /// worker is unavailable. Read-only and offline.
+        /// worker is unavailable. Read-only; may fetch uncached ancestors from the remote.
         /// </summary>
         LoreRevisionPage GetRevisionHistory(string repositoryRoot, string startAfterRevision, int pageSize);
 
         /// <summary>
         /// Reads the files changed by a single <paramref name="revision"/> (relative to its direct
         /// parent) for the repository at <paramref name="repositoryRoot"/>. Returns an empty array when
-        /// the worker is unavailable. Read-only and offline.
+        /// the worker is unavailable. Read-only; may fetch uncached revision data from the remote.
         /// </summary>
         LoreRevisionChange[] GetRevisionChanges(string repositoryRoot, string revision);
 

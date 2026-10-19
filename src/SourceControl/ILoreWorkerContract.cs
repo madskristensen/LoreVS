@@ -152,14 +152,14 @@ namespace LoreVS.SourceControl
         /// <summary>
         /// Writes the content of <paramref name="relativePath"/> as it exists at
         /// <paramref name="revision"/> (empty for the current revision) to <paramref name="outputPath"/>
-        /// on disk. Used to materialize the committed version of a file for diffing.
+        /// on disk. May fetch uncached content from the remote. Used to materialize the committed version of a file for diffing.
         /// </summary>
         Task<LoreCommandResult> WriteFileAtRevisionAsync(string workingDirectory, string relativePath, string revision, string outputPath, CancellationToken cancellationToken);
 
         /// <summary>
         /// Enumerates a bounded page of committed revisions for the repository at
         /// <paramref name="repositoryRoot"/>, newest first, using the native Lore revision-history API.
-        /// Runs entirely offline (no server required). Pass an empty <paramref name="startAfterRevision"/>
+        /// Uses cached history, fetching missing ancestors from the remote when needed. Pass an empty <paramref name="startAfterRevision"/>
         /// to read from the branch tip; pass the hash of the last revision already shown to continue
         /// paging (that revision is excluded from the returned page). At most
         /// <paramref name="pageSize"/> revisions are returned; <see cref="LoreRevisionPage.HasMore"/>
@@ -171,7 +171,7 @@ namespace LoreVS.SourceControl
         /// <summary>
         /// Returns the files changed by the single revision <paramref name="revision"/> (relative to
         /// its direct parent) for the repository at <paramref name="repositoryRoot"/>, as
-        /// absolute-path / normalized-status pairs. Read-only and offline: the working tree is never
+        /// absolute-path / normalized-status pairs. May fetch uncached revision data from the remote; the working tree is never
         /// mutated. Called lazily when a revision is selected in the Lore History window, so file
         /// details are not loaded for every revision in advance.
         /// </summary>

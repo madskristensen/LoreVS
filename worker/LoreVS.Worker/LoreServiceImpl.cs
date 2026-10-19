@@ -1093,7 +1093,7 @@ namespace LoreVS.Worker
                 return Task.FromResult(LoreCommandResult.Failed("A file path and an output path are required."));
             }
 
-            return ExecuteAsync(identity: null, offline: true, workingDirectory, globalArgs =>
+            return ExecuteAsync(identity: null, offline: false, workingDirectory, globalArgs =>
             {
                 using var args = new LoreFileWriteArgs
                 {
@@ -1136,7 +1136,9 @@ namespace LoreVS.Worker
             // per-revision RevisionInfo round trip.
             await RunExclusiveAsync(() =>
             {
-                using var globalArgs = new LoreGlobalArgs { RepositoryPath = repositoryRoot, WorkingDirectory = repositoryRoot, Offline = true };
+                // Clones need not cache ancestor states. Allow lazy remote reads without changing
+                // the working tree; already-cached history still works without a connection.
+                using var globalArgs = new LoreGlobalArgs { RepositoryPath = repositoryRoot, WorkingDirectory = repositoryRoot, Offline = false };
                 using var historyArgs = new LoreRevisionHistoryArgs
                 {
                     Revision = startAfterRevision,
@@ -1205,7 +1207,7 @@ namespace LoreVS.Worker
             // relative to its direct parent. This is read-only and never mutates the working tree.
             await RunExclusiveAsync(() =>
             {
-                using var globalArgs = new LoreGlobalArgs { RepositoryPath = repositoryRoot, WorkingDirectory = repositoryRoot, Offline = true };
+                using var globalArgs = new LoreGlobalArgs { RepositoryPath = repositoryRoot, WorkingDirectory = repositoryRoot, Offline = false };
                 using var infoArgs = new LoreRevisionInfoArgs { Revision = revision, Delta = true };
 
                 Lore.RevisionInfo(globalArgs, infoArgs).Callback((loreEvent, userContext) =>

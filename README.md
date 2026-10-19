@@ -100,9 +100,9 @@ Output window. Local synchronization does not mean remote changes were fetched.
 ## Browse revision history
 
 Choose **Lore > View History...** to open the **Lore History** tool window - a
-read-only log of the repository bound to the open solution or folder. It works
-fully offline against a local Lore repository and never changes your working
-tree.
+read-only log of the repository bound to the open solution or folder. Cached
+history works offline; missing older revisions in a fresh clone are fetched from
+the remote as needed. Browsing history never changes your working tree.
 
 The window loads the newest revisions first, a page at a time, so a repository
 with thousands of revisions stays responsive. Each row shows the first line of
@@ -179,6 +179,34 @@ Configure everything under **Tools > Options > Lore**:
 | Identity | Commit identity (e.g. `you@example.com`). |
 | Push after commit | Automatically push every successful commit. |
 | Server port (gRPC/QUIC) | gRPC/QUIC port used to build repository URLs. Default `41337`. |
+
+## Run the server integration tests
+
+The server functional tests run without opening Visual Studio. They start a
+disposable Lore server bound only to loopback, with temporary storage and
+automatically selected ports, then exercise the actual brokered client, named
+pipe transport, worker, and native SDK. They verify server-backed create, clone,
+commit, push, pull, revision hashes, and file contents in both directions. The
+tests cover an HTTP endpoint on an independent port and HTTP disabled entirely,
+uncached history and historical diffs, then stop the server and verify that a
+connection timeout reports failure without requesting sign-in or altering files.
+
+Build the solution first. Download and extract the Windows x64
+[Lore server 0.10.1 release](https://github.com/EpicGames/lore/releases/tag/v0.10.1),
+then run in PowerShell, substituting the path to the extracted executable:
+
+```powershell
+$env:LOREVS_TEST_SERVER_PATH = 'C:\tools\loreserver.exe'
+dotnet test LoreVS.slnx --configuration Debug --no-build --no-restore --filter 'TestCategory=ServerIntegration'
+```
+
+No existing repositories or installed Lore executables are changed. The tests
+stop their server and delete their temporary repositories afterward. Without
+`LOREVS_TEST_SERVER_PATH`, these tests are skipped; an invalid configured path
+fails the tests. CI downloads a checksum-pinned server and runs them with the
+rest of the suite automatically. This local server has authentication disabled;
+browser sign-in, credential migration, and authenticated permission checks still
+require a separately configured authentication service.
 
 ## Get involved
 

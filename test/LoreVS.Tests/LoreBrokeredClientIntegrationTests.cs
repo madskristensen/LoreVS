@@ -20,7 +20,7 @@ namespace LoreVS.Tests
     /// </summary>
     [TestClass]
     [TestCategory("Integration")]
-    public class LoreBrokeredClientIntegrationTests
+    public partial class LoreBrokeredClientIntegrationTests
     {
         private string _tempRoot = string.Empty;
 
